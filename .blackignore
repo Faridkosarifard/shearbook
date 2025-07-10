@@ -1,0 +1,9 @@
+.venv/
+venv/
+env/
+node_modules/
+alembic/versions/
+credentials/
+bot/dist/
+admin-panel/dist/
+admin-panel/node_modules/

@@ -1,0 +1,13 @@
+
+[Unit]
+Description=FriseurBot Frontend (React serve)
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/shearbook/friseurbot/admin-panel
+ExecStart=npx serve -s dist -l 3000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

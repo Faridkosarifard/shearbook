@@ -1,0 +1,14 @@
+
+[Unit]
+Description=FriseurBot Backend (Flask)
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/shearbook/friseurbot
+ExecStart=/home/shearbook/.local/bin/poetry run python3 main.py
+Restart=always
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
