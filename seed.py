@@ -8,21 +8,21 @@ def seed_services(db):
     if db.query(Service).count() == 0:
         print("📦 Seeding services...")
         services = [
-            Service(id=5, name="Damen Waschen, föhnen", duration_min=30, order=5),
-            Service(id=6, name="Damen Strähne/Balayag", duration_min=120, order=6),
-            Service(id=7, name="Damen Ansatz Farbe", duration_min=60, order=7),
-            Service(id=8, name="Damen komplette Farbe", duration_min=60, order=8),
-            Service(id=9, name="Damen Blondierung", duration_min=60, order=9),
-            Service(id=10, name="Herren Strähne", duration_min=90, order=10),
-            Service(id=11, name="Herren Dauerwelle", duration_min=60, order=11),
-            Service(id=12, name="Damen Dauerwelle", duration_min=90, order=12),
-            Service(id=13, name="Damen Extenstion", duration_min=60, order=13),
-            Service(id=1, name="Herren Haarschnitt", duration_min=30, order=2),
-            Service(id=2, name="Herren Haare und Bart", duration_min=60, order=1),
+            Service(name="Damen Waschen, föhnen", duration_min=30, position=5),
+            Service(name="Damen Strähne/Balayag", duration_min=120, position=6),
+            Service(name="Damen Ansatz Farbe", duration_min=60, position=7),
+            Service(name="Damen komplette Farbe", duration_min=60, position=8),
+            Service(name="Damen Blondierung", duration_min=60, position=9),
+            Service(name="Herren Strähne", duration_min=90, position=10),
+            Service(name="Herren Dauerwelle", duration_min=60, position=11),
+            Service(name="Damen Dauerwelle", duration_min=90, position=12),
+            Service(name="Damen Extenstion", duration_min=60, position=13),
+            Service(name="Herren Haarschnitt", duration_min=30, position=2),
+            Service(name="Herren Haare und Bart", duration_min=60, position=1),
             Service(
-                id=3, name="Damen Waschen, Schneiden, föhnen", duration_min=60, order=4
+                name="Damen Waschen, Schneiden, föhnen", duration_min=60, position=4
             ),
-            Service(id=4, name="Damen Waschen, Schneiden", duration_min=30, order=3),
+            Service(name="Damen Waschen, Schneiden", duration_min=30, position=3),
         ]
         db.add_all(services)
 
