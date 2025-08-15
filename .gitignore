@@ -27,9 +27,6 @@ instance/
 coverage.*
 htmlcov/
 
-# Alembic migration cache
-alembic/versions/
-
 # ====================
 # Flask
 # ====================
