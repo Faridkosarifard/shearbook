@@ -13,6 +13,7 @@ import os
 from contextlib import contextmanager
 from typing import Iterator
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.pool import NullPool
@@ -20,10 +21,8 @@ from sqlalchemy.pool import NullPool
 # -----------------------------
 # Configuration
 # -----------------------------
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:5432/friseurbot",
-)
+load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "10"))
 DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "20"))
