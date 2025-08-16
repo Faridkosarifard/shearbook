@@ -55,6 +55,7 @@ psycopg2-binary = "^2.9.10"
 make = "^0.1.6.post2"
 python-dotenv = "^1.1.1"
 pyjwt = "^2.10.1"
+gunicorn = "^23.0.0"
 
 [tool.poetry.scripts]
 friseurbot-cli = "friseurbot.cli:app"
