@@ -2,24 +2,21 @@
 from __future__ import annotations
 
 import os
+from logging import getLogger
 from pathlib import Path
 from typing import List
+
 from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
+logger = getLogger(__name__)
 load_dotenv()
 # Default scope: full access to Calendar (matches previous behavior)
 DEFAULT_SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 ENV_TOKEN = os.getenv("GOOGLE_TOKEN_PATH")
-
-if ENV_TOKEN:
-    TOKEN_PATH = Path(ENV_TOKEN)
-else:
-    ROOT = Path(__file__).resolve().parents[3]
-    TOKEN_PATH = ROOT / "friseurbot" / "credentials" / "token.json"
 
 
 def _load_scopes() -> List[str]:
@@ -38,9 +35,12 @@ def _resolve_token_path() -> Path:
     Resolve token.json path from environment or use project default.
     Set GOOGLE_TOKEN_PATH to override.
     """
-    custom = os.getenv("GOOGLE_TOKEN_PATH", "").strip()
-    if custom:
-        return Path(custom).expanduser().resolve()
+    if ENV_TOKEN:
+        TOKEN_PATH = Path(ENV_TOKEN)
+    else:
+        ROOT = Path(__file__).resolve().parents[3]
+        TOKEN_PATH = ROOT / "friseurbot" / "credentials" / "token.json"
+    logger.info(TOKEN_PATH)
     return TOKEN_PATH
 
 
