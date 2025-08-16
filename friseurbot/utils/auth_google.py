@@ -4,11 +4,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import List
-
+from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
+load_dotenv()
 # Default scope: full access to Calendar (matches previous behavior)
 DEFAULT_SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
