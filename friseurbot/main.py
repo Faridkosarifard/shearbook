@@ -1,6 +1,8 @@
+import logging
 import os
+import traceback
 
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
 
 from friseurbot.api.appointments import appointments_api
@@ -46,6 +48,12 @@ def shutdown_session(exception=None):
     Prevents connection leaks in long-running processes.
     """
     remove_session()
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    logging.exception("Unhandled exception: %s", e)  # traceback کامل در journal
+    return jsonify({"status": "error", "message": str(e)}), 500
 
 
 if __name__ == "__main__":

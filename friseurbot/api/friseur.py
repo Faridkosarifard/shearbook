@@ -63,8 +63,6 @@ def add_friseur():
 
     if not isinstance(name, str) or not name.strip():
         return jsonify({"status": "error", "message": "Invalid 'name'"}), 400
-    if not isinstance(active, bool):
-        return jsonify({"status": "error", "message": "Invalid 'active' (bool)"}), 400
 
     session = db_manager.get_session()
     try:
