@@ -3,7 +3,7 @@ import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import de from "date-fns/locale/de";
-import api from "api";
+import api from "./api";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import AddAppointmentModal from "./AddAppointmentModal";
