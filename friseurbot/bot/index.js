@@ -193,7 +193,7 @@ client.on("message", async (msg) => {
         break;
 
       default:
-        const help = await getHelpMessage();   // ⬅️ اینجا
+        const help = await getHelpMessage();
         await client.sendMessage(chatId, help);
         break;
     }
