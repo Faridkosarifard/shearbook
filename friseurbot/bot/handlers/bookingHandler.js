@@ -8,6 +8,7 @@
 const axios = require("axios");
 const sessions = require("../sessions");
 const logger = require("../utils/logger");
+const { getSetting } = require("../utils/settingsHelper");
 
 // Central axios client configured for Bot auth
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
@@ -286,21 +287,13 @@ async function handleEnterName(client, chatId, message) {
     }
 
     // Fetch settings to render booking confirmation text
-    let settings = {};
-    try {
-      const settingsRes = await api.get("/settings");
-      settings = settingsRes.data || {};
-    } catch (e) {
-      logger.warn("Fetching settings failed:", e?.response?.data || e.message);
-    }
-
-    const bookingText =
-      settings.booking_text ||
-      `✅ Termin gebucht!\n
+    const DEFAULT_BOOKING_TEMPLATE = `✅ Termin gebucht!\n
         🧾 {service}\n
         📅 {date} um {time}\n
         👤 {name}\n\n
         🔐 Ihre Reservierungsnummer:\n{code}`;
+
+    const bookingText = await getSetting("booking_text", DEFAULT_BOOKING_TEMPLATE);
 
     const antwort = bookingText
       .replace("{service}", session.service.name)
