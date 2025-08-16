@@ -13,47 +13,31 @@ from googleapiclient.discovery import build
 
 logger = getLogger(__name__)
 load_dotenv()
-# Default scope: full access to Calendar (matches previous behavior)
-DEFAULT_SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
-ENV_TOKEN = os.getenv("GOOGLE_TOKEN_PATH")
+DEFAULT_SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 
 def _load_scopes() -> List[str]:
-    """
-    Load OAuth scopes from environment or fall back to DEFAULT_SCOPES.
-    Set GOOGLE_SCOPES as a comma-separated list if you need custom scopes.
-    """
     env_scopes = os.getenv("GOOGLE_SCOPES", "").strip()
-    if not env_scopes:
-        return DEFAULT_SCOPES
-    return [s.strip() for s in env_scopes.split(",") if s.strip()]
+    return [s.strip() for s in env_scopes.split(",") if s.strip()] or DEFAULT_SCOPES
 
 
 def _resolve_token_path() -> Path:
-    """
-    Resolve token.json path from environment or use project default.
-    Set GOOGLE_TOKEN_PATH to override.
-    """
-    if ENV_TOKEN:
-        TOKEN_PATH = Path(ENV_TOKEN)
-    else:
-        ROOT = Path(__file__).resolve().parents[3]
-        TOKEN_PATH = ROOT / "friseurbot" / "credentials" / "token.json"
-    logger.info(TOKEN_PATH)
-    return TOKEN_PATH
+    # 1) ENV ارجح
+    env_token = os.getenv("GOOGLE_TOKEN_PATH")
+    if env_token:
+        p = Path(env_token)
+        logger.error(f"[auth_google] Using GOOGLE_TOKEN_PATH = {p}")  # دیده شود
+        return p
+
+    # 2) مسیر پیش‌فرض پروژه: /opt/friseurbot/friseurbot/credentials/token.json
+    root = Path(__file__).resolve().parents[2]  # <-- مهم: 2 نه 3
+    p = root / "friseurbot" / "credentials" / "token.json"
+    logger.error(f"[auth_google] Using default token path = {p}")  # دیده شود
+    return p
 
 
 def get_credentials() -> Credentials:
-    """
-    Load Google OAuth credentials from token.json.
-    - Refreshes the token if expired and a refresh_token is present.
-    - Writes back the refreshed token to disk.
-    Raises:
-        FileNotFoundError: if token.json does not exist.
-        RuntimeError: if credentials are expired and cannot be refreshed.
-        ValueError: if token file is invalid/corrupted.
-    """
     token_path = _resolve_token_path()
     scopes = _load_scopes()
 
@@ -63,24 +47,15 @@ def get_credentials() -> Credentials:
             "Please complete the OAuth flow to generate token.json."
         )
 
-    try:
-        creds = Credentials.from_authorized_user_file(str(token_path), scopes)
-    except Exception as e:
-        raise ValueError(
-            f"Failed to load credentials from token file '{token_path}': {e}"
-        ) from e
+    creds = Credentials.from_authorized_user_file(str(token_path), scopes)
 
-    # Refresh if needed
     if creds and creds.expired:
         if not creds.refresh_token:
-            # Cannot refresh → user must redo OAuth
             raise RuntimeError(
                 "Google credentials are expired and no refresh_token is available. "
                 "Re-run the OAuth consent flow to obtain a valid token.json."
             )
-        # Attempt refresh
         creds.refresh(Request())
-        # Persist refreshed token
         token_path.parent.mkdir(parents=True, exist_ok=True)
         token_path.write_text(creds.to_json(), encoding="utf-8")
 
@@ -88,10 +63,4 @@ def get_credentials() -> Credentials:
 
 
 def get_calendar_service():
-    """
-    Convenience helper to build a Google Calendar service client using current credentials.
-    Returns:
-        googleapiclient.discovery.Resource: Calendar v3 client.
-    """
-    creds = get_credentials()
-    return build("calendar", "v3", credentials=creds)
+    return build("calendar", "v3", credentials=get_credentials())
