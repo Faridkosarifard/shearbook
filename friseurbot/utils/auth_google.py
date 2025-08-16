@@ -12,9 +12,13 @@ from googleapiclient.discovery import build
 # Default scope: full access to Calendar (matches previous behavior)
 DEFAULT_SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
-# Resolve project root and default token location
-BASE_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_TOKEN_PATH = BASE_DIR / "friseurbot" / "credentials" / "token.json"
+ENV_TOKEN = os.getenv("GOOGLE_TOKEN_PATH")
+
+if ENV_TOKEN:
+    TOKEN_PATH = Path(ENV_TOKEN)
+else:
+    ROOT = Path(__file__).resolve().parents[3]
+    TOKEN_PATH = ROOT / "friseurbot" / "credentials" / "token.json"
 
 
 def _load_scopes() -> List[str]:
@@ -36,7 +40,7 @@ def _resolve_token_path() -> Path:
     custom = os.getenv("GOOGLE_TOKEN_PATH", "").strip()
     if custom:
         return Path(custom).expanduser().resolve()
-    return DEFAULT_TOKEN_PATH
+    return TOKEN_PATH
 
 
 def get_credentials() -> Credentials:
