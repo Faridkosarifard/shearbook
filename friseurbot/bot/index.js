@@ -7,6 +7,7 @@
  */
 
 const { Client, LocalAuth } = require("whatsapp-web.js");
+const { getHelpMessage } = require("./utils/messages");
 const qrcode = require("qrcode-terminal");
 const axios = require("axios");
 
@@ -148,8 +149,8 @@ client.on("message", async (msg) => {
 
   if (!session) {
     // If the user says something without starting a flow
-    const { getHelpMessage } = require("./utils/messages");
-    await client.sendMessage(chatId, getHelpMessage());
+    const help = await getHelpMessage()
+    await client.sendMessage(chatId, help);
     return;
   }
 
@@ -192,8 +193,8 @@ client.on("message", async (msg) => {
         break;
 
       default:
-        const { getHelpMessage } = require("./utils/messages");
-        await client.sendMessage(chatId, getHelpMessage());
+        const help = await getHelpMessage();   // ⬅️ اینجا
+        await client.sendMessage(chatId, help);
         break;
     }
   } catch (err) {
