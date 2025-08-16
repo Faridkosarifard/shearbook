@@ -1,3 +1,5 @@
+from logging import getLogger
+
 from flask import Blueprint, jsonify, request
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -10,6 +12,7 @@ from friseurbot.security import (
 from friseurbot.utils.calendar_tools import create_calendar_for_friseur
 from friseurbot.utils.db.manager import db_manager
 
+logger = getLogger(__name__)
 friseur_api = Blueprint("friseur_api", __name__)
 
 
@@ -66,8 +69,11 @@ def add_friseur():
 
     session = db_manager.get_session()
     try:
-        # Create (or fetch) a calendar for this hairdresser
-        calendar_id = create_calendar_for_friseur(name.strip())
+        try:
+            calendar_id = create_calendar_for_friseur(name)
+        except Exception as e:
+            logger.exception("Failed to create Google Calendar for '%s'", name)
+            return jsonify({"status": "error", "message": f"calendar_error: {e}"}), 500
 
         new_f = Friseur(
             name=name.strip(),
