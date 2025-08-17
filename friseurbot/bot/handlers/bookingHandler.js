@@ -104,15 +104,15 @@ async function handleEnterFriseur(client, chatId, message) {
 
     // Build up to 3 suggested dates that actually have free slots for this stylist
     const duration = session?.service?.duration || 30;
-    const suggestions = await suggestNextDatesWithSlots(
+    const suggestions = await suggestNextDatesOnly(
       dayjs().format("YYYY-MM-DD"),
       duration,
       session.friseur_id,
-      { maxDaysToCheck: 30, maxSuggestions: 3, takeSlotsPerDay: 5 },
+      { maxDaysToCheck: 30, maxSuggestions: 3 },
     );
 
     // If suggestions exist, show them; otherwise fall back to manual date entry
-    const sent = await promptSuggestedDates(client, chatId, session, selected.name, suggestions);
+    const sent = await promptDatesOnly(client, chatId, session, selected.name, datesOnly);
     if (!sent) {
       await client.sendMessage(
         chatId,

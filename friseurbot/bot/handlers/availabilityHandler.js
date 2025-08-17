@@ -50,6 +50,56 @@ async function suggestNextDatesWithSlots(
   return suggestions;
 }
 
+// Return up to `maxSuggestions` unique future dates (starting tomorrow) that have at least one slot.
+// It only returns [{ date: "YYYY-MM-DD" }, ...] (no times).
+async function suggestNextDatesOnly(startDateISO, duration, friseur_id, {
+  maxDaysToCheck = 30,
+  maxSuggestions = 3,
+} = {}) {
+  const out = [];
+  const seen = new Set();
+  let cursor = dayjs(startDateISO).startOf("day");
+
+  for (let i = 1; i <= maxDaysToCheck; i++) {
+    const d = cursor.add(1, "day").format("YYYY-MM-DD"); // start from tomorrow
+    if (seen.has(d)) continue;
+
+    try {
+      const slots = await getFreeTimes({ date: d, duration, friseur_id });
+      if (Array.isArray(slots) && slots.length > 0) {
+        out.push({ date: d });
+        seen.add(d);
+        if (out.length >= maxSuggestions) break;
+      }
+    } catch {
+      // ignore and continue
+    }
+
+    cursor = cursor.add(1, "day"); // move the cursor forward
+    // Note: dayjs is immutable, but we reassign for clarity
+  }
+  return out;
+}
+
+// Render suggested dates only (no time preview). Stores dates in session.suggested_dates
+async function promptDatesOnly(client, chatId, session, stylistName, dateItems /* [{date}] */) {
+  if (!Array.isArray(dateItems) || dateItems.length === 0) return false;
+
+  session.suggested_dates = dateItems.map(d => d.date);
+  await sessions.set(chatId, session);
+
+  let msg =
+    `✅ Friseur *${stylistName}* was selected.\n\n` +
+    `Please choose a date or enter your own (YYYY-MM-DD):\n`;
+
+  dateItems.forEach((d, i) => {
+    msg += `${i + 1}. ${d.date}\n`;
+  });
+
+  await client.sendMessage(chatId, msg);
+  return true;
+}
+
 /**
  * Render and send suggested dates to the user. Stores suggested_dates in session as array of strings.
  * Returns true if suggestions were sent; false if none found.
@@ -142,4 +192,6 @@ module.exports = {
   promptSuggestedDates,
   showSlotsForDate,
   handleSuggestedDateSelection,
+  suggestNextDatesOnly, 
+  promptDatesOnly,
 };
