@@ -1,13 +1,6 @@
-const api = require("../utils/backend");
+const api = require("./backend");
 
 const SETTINGS_TTL = parseInt(process.env.FR_SETTINGS_TTL_MS || "60000", 10); // 60s
-
-api.interceptors.request.use((config) => {
-  if (BOT_TOKEN) {
-    config.headers["X-Bot-Token"] = BOT_TOKEN;
-  }
-  return config;
-});
 
 let cache = null;
 let cacheTime = 0;
