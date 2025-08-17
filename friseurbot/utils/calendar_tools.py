@@ -150,7 +150,7 @@ def _get_personal_windows(
             ]
 
         # Global fallback
-        return [_clip_to_business_hours(d)]
+        return []
     finally:
         db_manager.close()
 
