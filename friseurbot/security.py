@@ -31,11 +31,11 @@ from flask import jsonify, make_response, request
 
 # Bot header name
 BOT_HEADER_NAME = "X-Bot-Token"
-BOT_TOKEN = os.getenv("BOT_TOKEN", "change-me")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 # Admin JWT cookie name and settings
 ADMIN_COOKIE_NAME = "admin_token"
-JWT_SECRET = os.getenv("JWT_SECRET", "change-me-too")
+JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_EXP_HOURS = int(os.getenv("JWT_EXP_HOURS", "8"))
 JWT_LEEWAY_SECONDS = int(os.getenv("JWT_LEEWAY_SECONDS", "10"))
 
