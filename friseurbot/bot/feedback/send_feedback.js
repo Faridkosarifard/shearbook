@@ -1,5 +1,5 @@
 // ✅ Bewertungs-Link nach Termin (Zeit und Text aus Settings)
-const logger = require("../utils/logger")
+const logger = require("../utils/logger");
 try {
   const resSettings = await axios.get("http://localhost:5000/settings");
   const feedbackTime = resSettings.data.feedback_time || "18:00"; // z.B. 18:00 Uhr

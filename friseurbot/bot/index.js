@@ -9,7 +9,7 @@
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const { getHelpMessage } = require("./utils/messages");
 const qrcode = require("qrcode-terminal");
-const axios = require("axios");
+const api = require("./utils/backend");
 
 const cancelHandler = require("./handlers/cancelHandler");
 const changeHandler = require("./handlers/changeHandler");
@@ -17,19 +17,6 @@ const bookingHandler = require("./handlers/bookingHandler");
 const friseurHandler = require("./handlers/friseurHandler");
 const logger = require("./utils/logger");
 const sessions = require("./sessions");
-
-// ---- Axios client for Backend (shared with Admin via same API) ----
-// IMPORTANT: Set these in your environment (e.g., .env or systemd)
-//   BACKEND_URL=http://192.0.2.10      (or http://127.0.0.1:8000 behind nginx)
-//   BOT_TOKEN=very-long-random-secret
-const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
-const BOT_TOKEN = process.env.BOT_TOKEN || "change-me";
-
-const api = axios.create({
-  baseURL: BACKEND_URL,
-  timeout: 10000,
-  headers: { "X-Bot-Token": BOT_TOKEN },
-});
 
 // ---- WhatsApp Client init ----
 const client = new Client({
@@ -59,7 +46,7 @@ async function loadServices() {
     logger.info(
       `Services loaded: ${Object.values(services)
         .map((s) => s.name)
-        .join(", ")}`
+        .join(", ")}`,
     );
   } catch (e) {
     logger.error("Error loading services:", e?.response?.data || e.message);
@@ -87,7 +74,7 @@ client.on("message", async (msg) => {
   } catch (err) {
     logger.error(
       `Blacklist check failed (${phone}):`,
-      err?.response?.data || err.stack || err.message
+      err?.response?.data || err.stack || err.message,
     );
     // continue flow even if blacklist check failed
   }
@@ -100,7 +87,7 @@ client.on("message", async (msg) => {
     await sessions.clear(chatId);
     await client.sendMessage(
       chatId,
-      '❌ Sitzung wurde beendet. Schreiben Sie "neu", um neu zu starten.'
+      '❌ Sitzung wurde beendet. Schreiben Sie "neu", um neu zu starten.',
     );
     return;
   }
@@ -116,13 +103,12 @@ client.on("message", async (msg) => {
     if (Object.keys(services).length === 0) {
       await client.sendMessage(
         chatId,
-        "⚠️ Services sind noch nicht geladen. Bitte versuchen Sie es später erneut."
+        "⚠️ Services sind noch nicht geladen. Bitte versuchen Sie es später erneut.",
       );
       return;
     }
 
-    let reply =
-      "🔄 Neue Sitzung gestartet.\n\nBitte wählen Sie eine Dienstleistung:\n";
+    let reply = "🔄 Neue Sitzung gestartet.\n\nBitte wählen Sie eine Dienstleistung:\n";
     Object.entries(services).forEach(([id, s]) => {
       reply += `${id}. ${s.name}\n`;
     });
@@ -149,7 +135,7 @@ client.on("message", async (msg) => {
 
   if (!session) {
     // If the user says something without starting a flow
-    const help = await getHelpMessage()
+    const help = await getHelpMessage();
     await client.sendMessage(chatId, help);
     return;
   }
@@ -201,7 +187,7 @@ client.on("message", async (msg) => {
     logger.error("Handler error:", err?.response?.data || err.stack || err.message);
     await client.sendMessage(
       chatId,
-      "⚠️ Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut."
+      "⚠️ Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.",
     );
   }
 });

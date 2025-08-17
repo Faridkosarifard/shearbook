@@ -29,6 +29,7 @@ def free_times():
     date = data.get("date")
     duration = data.get("duration")
     calendar_id = data.get("calendar_id")
+    friseur_id = data.get("friseur_id") 
 
     # Basic validation
     if not isinstance(date, str) or not date.strip():
@@ -50,7 +51,7 @@ def free_times():
         )
 
     try:
-        slots = get_free_slots(date.strip(), duration, calendar_id)
+        slots = get_free_slots(date.strip(), duration, calendar_id, friseur_id)
         return jsonify({"status": "ok", "slots": slots})
     except Exception as e:
         # Keep traceback in logs for debugging; return clean error to client

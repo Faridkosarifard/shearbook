@@ -6,20 +6,8 @@
  * - Returns `null` when the session is effectively empty (so `if (!session)` works).
  */
 
-const axios = require("axios");
+const api = require("../utils/backend");
 const logger = require("./utils/logger");
-
-// Environment-driven backend URL and bot token
-const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
-const BOT_TOKEN = process.env.BOT_TOKEN || "change-me";
-
-// Central axios client that always sends the Bot header
-const api = axios.create({
-  baseURL: BACKEND_URL,
-  timeout: 10000,
-  headers: { "X-Bot-Token": BOT_TOKEN },
-});
-
 const BASE = "/session";
 
 /**
@@ -44,10 +32,7 @@ async function get(chatId) {
     // Flatten: { data: {...} } -> { ...data }
     return { step, code, ...(data || {}) };
   } catch (err) {
-    logger.error(
-      `Session GET ${chatId} failed:`,
-      err?.response?.data || err.message
-    );
+    logger.error(`Session GET ${chatId} failed:`, err?.response?.data || err.message);
     // On failure, behave as "no session"
     return null;
   }
@@ -66,10 +51,7 @@ async function set(chatId, session) {
       data, // remaining fields are stored inside "data"
     });
   } catch (err) {
-    logger.error(
-      `Session SET ${chatId} failed:`,
-      err?.response?.data || err.message
-    );
+    logger.error(`Session SET ${chatId} failed:`, err?.response?.data || err.message);
   }
 }
 
@@ -80,11 +62,15 @@ async function clear(chatId) {
   try {
     await api.delete(`${BASE}/${encodeURIComponent(chatId)}`);
   } catch (err) {
-    logger.error(
-      `Session CLEAR ${chatId} failed:`,
-      err?.response?.data || err.message
-    );
+    logger.error(`Session CLEAR ${chatId} failed:`, err?.response?.data || err.message);
   }
 }
 
-module.exports = { get, set, clear };
+function resetDateTime(session) {
+  session.date = null;
+  session.time = null;
+  session.available_slots = null;
+  return session;
+}
+
+module.exports = { get, set, clear, resetDateTime };

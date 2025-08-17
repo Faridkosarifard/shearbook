@@ -15,7 +15,8 @@ export default function AddAppointmentModal({ onClose, onAdd }) {
   const selectedServiceId = watch("service_id");
 
   useEffect(() => {
-    api.get("/services")
+    api
+      .get("/services")
       .then((res) => setServices(res.data))
       .catch((err) => console.error("Fehler beim Laden der Services:", err));
 
@@ -29,7 +30,8 @@ export default function AddAppointmentModal({ onClose, onAdd }) {
     const selectedService = services.find((s) => s.id === parseInt(selectedServiceId));
     if (selectedDate && selectedService) {
       const dateStr = format(selectedDate, "yyyy-MM-dd");
-      api.post("/free-times", {
+      api
+        .post("/free-times", {
           date: dateStr,
           duration: selectedService.duration,
         })

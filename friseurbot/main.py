@@ -11,6 +11,7 @@ from friseurbot.api.blacklist import blacklist_api
 from friseurbot.api.dashboard import stats_api
 from friseurbot.api.free_times import free_times_api
 from friseurbot.api.friseur import friseur_api
+from friseurbot.api.friseur_schedule import schedule_api
 from friseurbot.api.services import services_api
 from friseurbot.api.sessions import sessions_api
 from friseurbot.api.settings import settings_api
@@ -38,6 +39,7 @@ app.register_blueprint(auth_api)
 app.register_blueprint(stats_api)
 app.register_blueprint(settings_api)
 app.register_blueprint(friseur_api)
+app.register_blueprint(schedule_api)
 
 
 # Ensure SQLAlchemy scoped_session is removed at the end of each app context.

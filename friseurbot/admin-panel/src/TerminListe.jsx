@@ -35,7 +35,8 @@ export default function TerminListe() {
   const [showAddModal, setShowAddModal] = useState(false);
 
   const loadAppointments = () => {
-    api.get("/appointments")
+    api
+      .get("/appointments")
       .then((res) => {
         const kalenderEvents = res.data.map((appt) => {
           const start = new Date(`${appt.date}T${appt.time}`);
@@ -129,12 +130,10 @@ export default function TerminListe() {
   const handleEditSubmit = async () => {
     try {
       const dateStr = format(editDate, "yyyy-MM-dd");
-      await api.put(`/update-reservation/${selectedEvent.reservation_code}`,
-        {
-          new_date: dateStr,
-          new_time: editTime,
-        },
-      );
+      await api.put(`/update-reservation/${selectedEvent.reservation_code}`, {
+        new_date: dateStr,
+        new_time: editTime,
+      });
       setSelectedEvent(null);
       setEditMode(false);
       loadAppointments();

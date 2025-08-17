@@ -11,7 +11,8 @@ export default function SettingsPage() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    api.get("/settings")
+    api
+      .get("/settings")
       .then((res) => {
         setForm(res.data);
         setLoading(false);

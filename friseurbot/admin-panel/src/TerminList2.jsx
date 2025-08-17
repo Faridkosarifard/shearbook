@@ -35,7 +35,8 @@ export default function TerminListe() {
   const [showAddModal, setShowAddModal] = useState(false);
 
   const loadAppointments = () => {
-    api.get("/appointments")
+    api
+      .get("/appointments")
       .then((res) => {
         const kalenderEvents = res.data.map((appt) => {
           const start = new Date(`${appt.date}T${appt.time}`);
@@ -92,8 +93,7 @@ export default function TerminListe() {
     if (!selectedEvent?.reservation_code) return;
     if (!confirm("Diesen Termin wirklich löschen?")) return;
     try {
-      await api.delete(`/cancel-reservation/${selectedEvent.reservation_code}`,
-      );
+      await api.delete(`/cancel-reservation/${selectedEvent.reservation_code}`);
       setEvents(events.filter((e) => e.reservation_code !== selectedEvent.reservation_code));
       setSelectedEvent(null);
     } catch (err) {
@@ -127,12 +127,10 @@ export default function TerminListe() {
   const handleEditSubmit = async () => {
     try {
       const dateStr = format(editDate, "yyyy-MM-dd");
-      await api.put(`/update-reservation/${selectedEvent.reservation_code}`,
-        {
-          new_date: dateStr,
-          new_time: editTime,
-        },
-      );
+      await api.put(`/update-reservation/${selectedEvent.reservation_code}`, {
+        new_date: dateStr,
+        new_time: editTime,
+      });
       setSelectedEvent(null);
       setEditMode(false);
       loadAppointments();
