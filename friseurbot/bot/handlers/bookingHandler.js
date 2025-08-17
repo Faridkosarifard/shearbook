@@ -123,6 +123,7 @@ async function handleEnterFriseur(client, chatId, message) {
     }
   } catch (err) {
     logger.error(`Error retrieving friseure for ${chatId}:`, err?.response?.data || err.message);
+    logger.error(e)
     await client.sendMessage(
       chatId,
       "❌ Es gab ein Problem beim Laden der Friseure. Bitte versuch es später erneut.",
