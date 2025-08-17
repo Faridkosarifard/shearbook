@@ -1,7 +1,7 @@
 // bot/utils/backend.js
 const axios = require("axios");
 const logger = require("./logger");
-require("dotenv").config();   
+require("dotenv").config();
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:5000";
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -26,14 +26,18 @@ client.interceptors.response.use(
     const cfg = err.config || {};
     const msg = [
       "[Bot] API error:",
-      cfg.method?.toUpperCase(), cfg.baseURL + cfg.url,
-      "status=", err.response?.status,
-      "code=", err.code,
-      "data=", JSON.stringify(err.response?.data || {}),
+      cfg.method?.toUpperCase(),
+      cfg.baseURL + cfg.url,
+      "status=",
+      err.response?.status,
+      "code=",
+      err.code,
+      "data=",
+      JSON.stringify(err.response?.data || {}),
     ].join(" ");
     logger.error(msg);
     return Promise.reject(err);
-  }
+  },
 );
 
 logger.info(`[Bot] Using BACKEND_URL=${BACKEND_URL} | BOT_TOKEN.len=${BOT_TOKEN?.length || 0}`);

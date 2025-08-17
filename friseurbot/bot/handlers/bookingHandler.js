@@ -11,12 +11,10 @@ const logger = require("../utils/logger");
 const { getSetting } = require("../utils/settingsHelper");
 const api = require("../utils/backend");
 const {
-  suggestNextDatesOnly,
-  promptDatesOnly,
-  suggestNextDatesWithSlots,
-  promptSuggestedDates,
   showSlotsForDate,
   handleSuggestedDateSelection,
+  suggestNextDatesOnly,
+  promptDatesOnly,
 } = require("./availabilityHandler");
 
 function getPhoneFromChatId(chatId) {
@@ -123,7 +121,7 @@ async function handleEnterFriseur(client, chatId, message) {
     }
   } catch (err) {
     logger.error(`Error retrieving friseure for ${chatId}:`, err?.response?.data || err.message);
-    logger.error(e)
+    logger.error(e);
     await client.sendMessage(
       chatId,
       "❌ Es gab ein Problem beim Laden der Friseure. Bitte versuch es später erneut.",
@@ -143,73 +141,56 @@ async function handleEnterDate(client, chatId, message) {
   const session = (await sessions.get(chatId)) || {};
 
   const isDateFormat = /^\d{4}-\d{2}-\d{2}$/.test(message);
-  const isNumber = /^[1-9]\d*$/.test(message);
+  const isIndex = /^[1-9]\d*$/.test(message);
 
-  if (isNumber && Array.isArray(session.suggested_dates)) {
-    const idx = parseInt(message, 10);
-    if (idx < 1 || idx > session.suggested_dates.length) {
-      await client.sendMessage(chatId, "❗️ Ungültige Eingabe. Bitte gib eine gültige Zahl ein.");
-      return;
-    }
-    session.date = session.suggested_dates[idx - 1];
-  } else if (isDateFormat) {
-    session.date = message;
-  } else {
-    await client.sendMessage(chatId, "❗️ Ungültige Eingabe. Bitte gib ein gültiges Datum ein.");
+  // If user picked one of the suggested dates by index, delegate and exit
+  if (isIndex && Array.isArray(session.suggested_dates) && session.suggested_dates.length) {
+    await handleSuggestedDateSelection(client, chatId, message);
     return;
   }
 
-  try {
-    // use slotHandler instead of direct API call
-    const slots = await getFreeTimesForDate(
-      session.friseur_id,
-      session.date,
-      session.service.duration,
-    );
+  // If user typed a concrete date, try to show slots for that date
+  if (isDateFormat) {
+    session.date = message;
+    await sessions.set(chatId, session);
 
-    if (!slots.length) {
-      const suggestions = await suggestNextAvailableDates(
-        session.friseur_id,
-        session.date,
-        session.service.duration,
-      );
+    // showSlotsForDate sends the message itself and returns true/false
+    const ok = await showSlotsForDate(client, chatId, session, session.date);
+    if (ok) return;
 
-      if (!suggestions.length) {
-        await client.sendMessage(
-          chatId,
-          "Leider gibt es keine freien Zeiten 😔. Bitte versuche ein anderes Datum.",
-        );
-        session.step = "enter_date";
-        session.suggested_dates = null;
-        await sessions.set(chatId, session);
-        return;
-      }
-
-      let msg = "Keine freien Zeiten an diesem Datum.\nNächste verfügbare Tage:\n";
-      suggestions.forEach((s, i) => {
-        msg += `${i + 1}. ${s.date} – ${s.slots.join(", ")}\n`;
-      });
-      session.suggested_dates = suggestions.map((s) => s.date);
-      session.step = "enter_date";
-      await sessions.set(chatId, session);
-      await client.sendMessage(chatId, msg);
-      return;
-    }
-
-    // normal case: slots exist
-    let antwort = "Bitte wählen Sie eine verfügbare Uhrzeit:\n";
-    slots.forEach((slot, index) => {
-      antwort += `${index + 1}. ${slot}\n`;
+    // No slots on that date → propose next available dates (dates only, no time preview)
+    const duration = session?.service?.duration || 30;
+    const suggestions = await suggestNextDatesOnly(session.date, duration, session.friseur_id, {
+      maxDaysToCheck: 30,
+      maxSuggestions: 3,
     });
 
-    session.available_slots = slots;
-    session.step = "choose_time";
-    await sessions.set(chatId, session);
-    await client.sendMessage(chatId, antwort + "Antworten Sie mit der Nummer.");
-  } catch (e) {
-    logger.error(`Error in handleEnterDate for ${chatId}:`, e.message);
-    await client.sendMessage(chatId, "❌ Fehler beim Abrufen der freien Zeiten.");
+    const sent = await promptDatesOnly(
+      client,
+      chatId,
+      session,
+      session.friseur_name || "ausgewählter Friseur",
+      suggestions,
+    );
+
+    if (!sent) {
+      // Still nothing to suggest
+      await client.sendMessage(
+        chatId,
+        "Leider gibt es keine freien Zeiten 😔. Bitte gib ein anderes Datum (YYYY-MM-DD) ein.",
+      );
+      session.step = "enter_date";
+      session.suggested_dates = null;
+      await sessions.set(chatId, session);
+    }
+    return;
   }
+
+  // Invalid input
+  await client.sendMessage(
+    chatId,
+    "❗️ Ungültige Eingabe. Bitte gib eine Zahl (1..N) oder ein gültiges Datum (YYYY-MM-DD) ein.",
+  );
 }
 
 /**

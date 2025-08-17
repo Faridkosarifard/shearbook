@@ -1,5 +1,5 @@
 // bot/handlers/availabilityHandler.js
-// Reusable availability utilities for suggesting dates and showing time slots.
+// Reusable availability utilities for suggesting dates (no time preview) and showing time slots.
 // All comments are in English to keep the codebase consistent.
 
 const dayjs = require("dayjs");
@@ -11,7 +11,14 @@ function formatDateDE(iso) {
   return dayjs(iso).format("dddd, DD.MM.YYYY");
 }
 
-/** Fetch free slots for a stylist on a given date. */
+/**
+ * Fetch free slots for a stylist on a given date.
+ * Backend applies:
+ *  - global days_off,
+ *  - stylist weekly template / exceptions (OFF, CUSTOM),
+ *  - Google Calendar busy events,
+ *  - current-day "past time" filtering.
+ */
 async function getFreeTimes({ date, duration, friseur_id }) {
   const res = await api.post("/free-times", {
     date,
@@ -23,45 +30,22 @@ async function getFreeTimes({ date, duration, friseur_id }) {
 }
 
 /**
- * Find up to `maxDaysToCheck` future days (starting tomorrow) that have at least one slot.
- * Returns an array of objects: [{ date: "YYYY-MM-DD", slots: ["HH:MM", ...] }, ...]
+ * Suggest up to `maxSuggestions` unique future dates (starting tomorrow, relative to startDateISO)
+ * that actually have at least one free slot for the given stylist.
+ * Returns only dates, no time preview: [{ date: "YYYY-MM-DD" }, ...]
  */
-async function suggestNextDatesWithSlots(
+async function suggestNextDatesOnly(
   startDateISO,
   duration,
   friseur_id,
-  { maxDaysToCheck = 30, maxSuggestions = 3, takeSlotsPerDay = 5 } = {},
+  { maxDaysToCheck = 30, maxSuggestions = 3 } = {},
 ) {
-  const suggestions = [];
-  let cursor = dayjs(startDateISO);
-
-  for (let i = 1; i <= maxDaysToCheck; i++) {
-    const d = cursor.add(1, "day").format("YYYY-MM-DD");
-    try {
-      const slots = await getFreeTimes({ date: d, duration, friseur_id });
-      if (slots.length) {
-        suggestions.push({ date: d, slots: slots.slice(0, takeSlotsPerDay) });
-        if (suggestions.length >= maxSuggestions) break;
-      }
-    } catch {
-      // ignore and keep scanning
-    }
-  }
-  return suggestions;
-}
-
-// Return up to `maxSuggestions` unique future dates (starting tomorrow) that have at least one slot.
-// It only returns [{ date: "YYYY-MM-DD" }, ...] (no times).
-async function suggestNextDatesOnly(startDateISO, duration, friseur_id, {
-  maxDaysToCheck = 30,
-  maxSuggestions = 3,
-} = {}) {
   const out = [];
   const seen = new Set();
-  let cursor = dayjs(startDateISO).startOf("day");
 
-  for (let i = 1; i <= maxDaysToCheck; i++) {
-    const d = cursor.add(1, "day").format("YYYY-MM-DD"); // start from tomorrow
+  // strictly scan from "tomorrow" relative to the given start date
+  for (let offset = 1; offset <= maxDaysToCheck; offset++) {
+    const d = dayjs(startDateISO).add(offset, "day").format("YYYY-MM-DD");
     if (seen.has(d)) continue;
 
     try {
@@ -72,52 +56,30 @@ async function suggestNextDatesOnly(startDateISO, duration, friseur_id, {
         if (out.length >= maxSuggestions) break;
       }
     } catch {
-      // ignore and continue
+      // ignore HTTP/logic errors and keep scanning forward
     }
-
-    cursor = cursor.add(1, "day"); // move the cursor forward
-    // Note: dayjs is immutable, but we reassign for clarity
   }
+
   return out;
 }
 
-// Render suggested dates only (no time preview). Stores dates in session.suggested_dates
+/**
+ * Render only dates (no time preview) to the user.
+ * Stores the list in `session.suggested_dates` to be resolved by index later.
+ * Returns true if something was sent, false if list is empty.
+ */
 async function promptDatesOnly(client, chatId, session, stylistName, dateItems /* [{date}] */) {
   if (!Array.isArray(dateItems) || dateItems.length === 0) return false;
 
-  session.suggested_dates = dateItems.map(d => d.date);
+  session.suggested_dates = dateItems.map((d) => d.date);
   await sessions.set(chatId, session);
 
   let msg =
-    `✅ Friseur *${stylistName}* was selected.\n\n` +
-    `Please choose a date or enter your own (YYYY-MM-DD):\n`;
+    `✅ Friseur *${stylistName}* wurde ausgewählt.\n\n` +
+    `Bitte wähle ein Datum oder gib ein eigenes ein (YYYY-MM-DD):\n`;
 
   dateItems.forEach((d, i) => {
     msg += `${i + 1}. ${d.date}\n`;
-  });
-
-  await client.sendMessage(chatId, msg);
-  return true;
-}
-
-/**
- * Render and send suggested dates to the user. Stores suggested_dates in session as array of strings.
- * Returns true if suggestions were sent; false if none found.
- */
-async function promptSuggestedDates(client, chatId, session, stylistName, suggestions) {
-  if (!suggestions.length) return false;
-
-  // Store only the list of dates for the next step
-  session.suggested_dates = suggestions.map((s) => s.date);
-  await sessions.set(chatId, session);
-
-  let msg =
-    `✅ Friseur *${stylistName}* was selected.\n\n` +
-    `Please choose a date or enter your own (YYYY-MM-DD):\n`;
-
-  suggestions.forEach((s, i) => {
-    const preview = s.slots.join(", ");
-    msg += `${i + 1}. ${s.date}${preview ? " – " + preview : ""}\n`;
   });
 
   await client.sendMessage(chatId, msg);
@@ -137,33 +99,34 @@ async function showSlotsForDate(client, chatId, session, dateISO) {
     friseur_id: session.friseur_id,
   });
 
-  if (!slots.length) return false;
+  if (!Array.isArray(slots) || slots.length === 0) return false;
 
   session.available_slots = slots;
   session.step = "choose_time";
   await sessions.set(chatId, session);
 
-  let msg = `Available times on ${formatDateDE(dateISO)}:\n`;
+  let msg = `Verfügbare Zeiten am ${formatDateDE(dateISO)}:\n`;
   slots.forEach((t, i) => {
     msg += `${i + 1}. ${t}\n`;
   });
-  await client.sendMessage(chatId, msg + "Reply with the number.");
+  await client.sendMessage(chatId, msg + "Antworte mit der Nummer.");
   return true;
 }
 
 /**
  * Handle user picking one of the suggested days (1..N).
- * If valid, sets session.date and shows its slots.
+ * - Resolves the index to a concrete date from session.suggested_dates
+ * - Shows slots for that date (or asks for another date if none left)
  */
 async function handleSuggestedDateSelection(client, chatId, message) {
   const session = (await sessions.get(chatId)) || {};
-  const list = session.suggested_dates || [];
+  const list = Array.isArray(session.suggested_dates) ? session.suggested_dates : [];
   const idx = parseInt((message || "").trim(), 10);
 
   if (Number.isNaN(idx) || idx < 1 || idx > list.length) {
     await client.sendMessage(
       chatId,
-      `❗️ Invalid input. Please send a number between 1 and ${list.length}.`,
+      `❗️ Ungültige Eingabe. Bitte eine Zahl zwischen 1 und ${list.length} senden.`,
     );
     return;
   }
@@ -174,10 +137,10 @@ async function handleSuggestedDateSelection(client, chatId, message) {
 
   const ok = await showSlotsForDate(client, chatId, session, chosenDate);
   if (!ok) {
-    // No slots for the chosen suggested date (rare, but handle gracefully)
+    // Edge case: suggested date no longer has slots (concurrent booking)
     await client.sendMessage(
       chatId,
-      "No free times on that date anymore. Please choose another date (YYYY-MM-DD).",
+      "Für dieses Datum sind keine freien Zeiten mehr verfügbar. Bitte ein anderes Datum (YYYY-MM-DD) senden.",
     );
     session.step = "enter_date";
     session.suggested_dates = null;
@@ -188,10 +151,8 @@ async function handleSuggestedDateSelection(client, chatId, message) {
 module.exports = {
   formatDateDE,
   getFreeTimes,
-  suggestNextDatesWithSlots,
-  promptSuggestedDates,
+  suggestNextDatesOnly,
+  promptDatesOnly,
   showSlotsForDate,
   handleSuggestedDateSelection,
-  suggestNextDatesOnly, 
-  promptDatesOnly,
 };
