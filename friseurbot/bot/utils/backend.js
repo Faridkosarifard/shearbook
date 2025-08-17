@@ -1,5 +1,6 @@
 // bot/utils/backend.js
 const axios = require("axios");
+require("dotenv").config();   
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:5000";
 const BOT_TOKEN = process.env.BOT_TOKEN;
