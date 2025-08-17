@@ -2,11 +2,6 @@ const api = require("../utils/backend");
 
 const SETTINGS_TTL = parseInt(process.env.FR_SETTINGS_TTL_MS || "60000", 10); // 60s
 
-const api = axios.create({
-  baseURL: BASE_URL,
-  timeout: 8000,
-});
-
 api.interceptors.request.use((config) => {
   if (BOT_TOKEN) {
     config.headers["X-Bot-Token"] = BOT_TOKEN;
