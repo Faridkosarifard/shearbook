@@ -6,7 +6,7 @@
  * - Returns `null` when the session is effectively empty (so `if (!session)` works).
  */
 
-const api = require("../utils/backend");
+const api = require("./utils/backend");
 const logger = require("./utils/logger");
 const BASE = "/session";
 
