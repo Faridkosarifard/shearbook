@@ -11,6 +11,8 @@ const logger = require("../utils/logger");
 const { getSetting } = require("../utils/settingsHelper");
 const api = require("../utils/backend");
 const {
+  suggestNextDatesOnly,
+  promptDatesOnly,
   suggestNextDatesWithSlots,
   promptSuggestedDates,
   showSlotsForDate,
