@@ -114,7 +114,7 @@ async function handleEnterFriseur(client, chatId, message) {
     );
 
     // If suggestions exist, show them; otherwise fall back to manual date entry
-    const sent = await promptDatesOnly(client, chatId, session, selected.name, datesOnly);
+    const sent = await promptDatesOnly(client, chatId, session, selected.name, suggestions);
     if (!sent) {
       await client.sendMessage(
         chatId,
