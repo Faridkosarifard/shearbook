@@ -85,6 +85,49 @@ def _clip_to_business_hours(d: date_cls) -> Tuple[datetime, datetime]:
     return start_dt, end_dt
 
 
+# ---------------- Helpers: interval algebra ----------------
+
+
+def _subtract_blocks(
+    windows: List[Tuple[datetime, datetime]],
+    blocks: List[Tuple[datetime, datetime]],
+) -> List[Tuple[datetime, datetime]]:
+    """
+    Subtract `blocks` (closed intervals) from working `windows` and return the remaining open windows.
+    Intervals are tz-aware and assumed valid (start < end).
+    """
+    if not windows or not blocks:
+        return windows
+
+    result: List[Tuple[datetime, datetime]] = []
+    for w_start, w_end in windows:
+        segments = [(w_start, w_end)]
+        for b_start, b_end in blocks:
+            new_segments: List[Tuple[datetime, datetime]] = []
+            for s, e in segments:
+                # no overlap
+                if e <= b_start or s >= b_end:
+                    new_segments.append((s, e))
+                    continue
+                # overlap -> keep the parts outside the block
+                if s < b_start:
+                    new_segments.append((s, min(b_start, e)))
+                if e > b_end:
+                    new_segments.append((max(b_end, s), e))
+            segments = [(s, e) for (s, e) in new_segments if e > s]
+        result.extend(segments)
+
+    # Normalize / merge touching intervals
+    result.sort(key=lambda x: x[0])
+    merged: List[Tuple[datetime, datetime]] = []
+    for s, e in result:
+        if not merged or s > merged[-1][1]:
+            merged.append((s, e))
+        else:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+    return merged
+
+
 # ---------------- Helpers: personal schedule ----------------
 
 
@@ -93,10 +136,12 @@ def _get_personal_windows(
 ) -> List[Tuple[datetime, datetime]]:
     """
     Get working windows (start,end) for a specific date and stylist.
-    Priority order:
-      1. Exceptions → OFF (no work) or CUSTOM (specific times)
-      2. Weekly template hours
-      3. Global business hours fallback
+
+    Semantics:
+      - OFF exception  => closed all day (return []).
+      - CUSTOM entries => CLOSED blocks to subtract from weekly windows for that date.
+      - Weekly template rows define the base working windows.
+      - If no weekly rows and no exceptions => closed (no global fallback).
     """
     session = db_manager.get_session()
     try:
@@ -107,29 +152,15 @@ def _get_personal_windows(
             )
             .all()
         )
-        # OFF ⇒ no working window
+
+        # OFF ⇒ closed all day
         for ex in ex_list:
             t = getattr(ex, "type", None)
             tval = t.value if hasattr(t, "value") else t
             if tval == "OFF":
                 return []
 
-        # CUSTOM ⇒ return custom working intervals
-        custom = []
-        for ex in ex_list:
-            t = getattr(ex, "type", None)
-            tval = t.value if hasattr(t, "value") else t
-            if tval == "CUSTOM" and ex.start_time and ex.end_time:
-                custom.append(
-                    (
-                        BERLIN_TZ.localize(datetime.combine(d, ex.start_time)),
-                        BERLIN_TZ.localize(datetime.combine(d, ex.end_time)),
-                    )
-                )
-        if custom:
-            return custom
-
-        # Weekly template
+        # Base windows from weekly template
         weekday = d.weekday()
         weekly = (
             session.query(FriseurWeeklyHour)
@@ -140,17 +171,36 @@ def _get_personal_windows(
             .order_by(FriseurWeeklyHour.start_time)
             .all()
         )
-        if weekly:
-            return [
-                (
-                    BERLIN_TZ.localize(datetime.combine(d, w.start_time)),
-                    BERLIN_TZ.localize(datetime.combine(d, w.end_time)),
-                )
-                for w in weekly
-            ]
+        if not weekly:
+            # No weekly rows → closed (even if CUSTOM blocks exist, nothing to subtract from)
+            return []
 
-        # Global fallback
-        return []
+        base_windows = [
+            (
+                BERLIN_TZ.localize(datetime.combine(d, w.start_time)),
+                BERLIN_TZ.localize(datetime.combine(d, w.end_time)),
+            )
+            for w in weekly
+        ]
+
+        # Collect CUSTOM blocks (closed intervals) to subtract
+        custom_blocks: List[Tuple[datetime, datetime]] = []
+        for ex in ex_list:
+            t = getattr(ex, "type", None)
+            tval = t.value if hasattr(t, "value") else t
+            if tval == "CUSTOM" and ex.start_time and ex.end_time:
+                custom_blocks.append(
+                    (
+                        BERLIN_TZ.localize(datetime.combine(d, ex.start_time)),
+                        BERLIN_TZ.localize(datetime.combine(d, ex.end_time)),
+                    )
+                )
+
+        return (
+            _subtract_blocks(base_windows, custom_blocks)
+            if custom_blocks
+            else base_windows
+        )
     finally:
         db_manager.close()
 
@@ -160,7 +210,7 @@ def _get_personal_windows(
 
 def _dt_from_google(v: dict) -> datetime:
     """
-    Convert Google Calendar time dict to a tz-aware datetime.
+    Convert Google Calendar time dict to a tz-aware datetime (Europe/Berlin).
     Handles both `dateTime` and all-day `date` formats.
     """
     if "dateTime" in v:
@@ -169,9 +219,11 @@ def _dt_from_google(v: dict) -> datetime:
             dt = BERLIN_TZ.localize(dt)
         return dt.astimezone(BERLIN_TZ)
     elif "date" in v:
+        # All-day start at 00:00 local
         d0 = parser.parse(v["date"]).date()
         return BERLIN_TZ.localize(datetime.combine(d0, time(0, 0)))
     else:
+        # Fallback: now (should not happen)
         return BERLIN_TZ.localize(datetime.utcnow()).astimezone(BERLIN_TZ)
 
 
@@ -249,7 +301,7 @@ def _gen_slots(
     step = dur
     out: List[str] = []
     for fs, fe in free_intervals:
-        t = fs
+        t = fs.replace(second=0, microsecond=0)
         while t + dur <= fe:
             out.append(t.strftime("%H:%M"))
             t += step
@@ -266,14 +318,19 @@ def get_free_slots(
     friseur_id: Optional[int] = None,
 ) -> List[str]:
     """
-    Compute free appointment slots for a given date and duration.
-    Rules:
-      - If `friseur_id` is given:
-          * If `calendar_id` is empty, fetch from `friseure` table.
-          * Working windows come from personal schedule (exceptions, weekly template, fallback).
-      - Otherwise, use global business hours.
-      - If date is in `days_off` ⇒ no slots (system closed).
-      - Excludes past slots if date is today.
+    Compute free appointment slots for a given date and duration (Europe/Berlin).
+
+    Behaviour:
+      - Global `days_off` closes the day for everyone.
+      - For a stylist:
+          * OFF exception => closed all day.
+          * CUSTOM exceptions => closed blocks to subtract from weekly windows.
+          * Weekly rows define base windows.
+          * No weekly & no exceptions => closed (no global fallback).
+      - For non-stylist (friseur_id=None), use global business hours.
+      - Google Calendar busy events are respected (per-window).
+      - For today, past start times are filtered out.
+      - Step equals the requested duration (no extra gaps).
     """
     if not isinstance(duration_min, int) or duration_min <= 0:
         return []
@@ -286,6 +343,7 @@ def get_free_slots(
     if _is_day_off(d):
         return []
 
+    # Resolve calendar id from stylist if needed
     if friseur_id and not calendar_id:
         session = db_manager.get_session()
         try:
@@ -299,6 +357,7 @@ def get_free_slots(
     if not calendar_id:
         return []
 
+    # Build windows
     if friseur_id:
         windows = _get_personal_windows(d, int(friseur_id))
     else:
@@ -307,6 +366,7 @@ def get_free_slots(
     if not windows:
         return []
 
+    # Query Google Calendar busy intervals inside each window
     service = get_calendar_service()
     busy_all: List[Tuple[datetime, datetime]] = []
 
@@ -332,6 +392,7 @@ def get_free_slots(
 
     busy_merged = _merge_intervals(busy_all)
 
+    # Subtract busy from each working window
     free_windows: List[Tuple[datetime, datetime]] = []
     for w_start, w_end in windows:
         relevant = []
@@ -342,8 +403,10 @@ def get_free_slots(
         relevant = _merge_intervals(relevant)
         free_windows.extend(_subtract_busy_from_window(w_start, w_end, relevant))
 
+    # Generate slots at `duration_min` step
     slots = _gen_slots(free_windows, duration_min)
 
+    # If today, drop past ones
     now_berlin = datetime.now(BERLIN_TZ)
     if d == now_berlin.date():
 
@@ -353,6 +416,7 @@ def get_free_slots(
 
         slots = [s for s in slots if _to_dt(s) >= now_berlin]
 
+    # Unique + sorted
     return sorted(list(dict.fromkeys(slots)))
 
 
