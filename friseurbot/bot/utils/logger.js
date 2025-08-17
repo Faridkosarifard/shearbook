@@ -25,17 +25,15 @@ const logger = createLogger({
     format.colorize({ all: true }),
     format.printf(({ timestamp, level, message, stack }) => {
       // Prefer stack for errors; fallback to message
-      return stack
-        ? `${timestamp} | ${level} | ${stack}`
-        : `${timestamp} | ${level} | ${message}`;
-    })
+      return stack ? `${timestamp} | ${level} | ${stack}` : `${timestamp} | ${level} | ${message}`;
+    }),
   ),
   transports: [
     new transports.Console(),
     new transports.File({
       filename: path.join(logDir, "bot.log"),
       maxsize: 5 * 1024 * 1024, // 5MB
-      maxFiles: 3,              // keep 3 rotated files
+      maxFiles: 3, // keep 3 rotated files
     }),
   ],
 });

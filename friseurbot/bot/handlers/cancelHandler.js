@@ -7,18 +7,9 @@
  *   2) confirmCancel       => on "ja" do DELETE /cancel-reservation/<code>, on "nein" abort
  */
 
-const axios = require("axios");
+const api = require("../utils/backend");
 const sessions = require("../sessions");
 const logger = require("../utils/logger");
-
-// Central axios client configured for Bot auth
-const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
-const BOT_TOKEN = process.env.BOT_TOKEN || "change-me";
-const api = axios.create({
-  baseURL: BACKEND_URL,
-  timeout: 10000,
-  headers: { "X-Bot-Token": BOT_TOKEN },
-});
 
 /**
  * Extract reservation code from a free-form message like:
@@ -53,7 +44,7 @@ async function handleCancelCommand(client, chatId, messageRaw) {
     await sessions.set(chatId, session);
     await client.sendMessage(
       chatId,
-      "Bitte sende deinen Reservierungscode zum Stornieren (z. B. ABC123)."
+      "Bitte sende deinen Reservierungscode zum Stornieren (z. B. ABC123).",
     );
     return;
   }
@@ -65,7 +56,7 @@ async function handleCancelCommand(client, chatId, messageRaw) {
 
   await client.sendMessage(
     chatId,
-    `Möchtest du die Reservierung mit Code *${code}* wirklich stornieren? (antworte mit "ja" oder "nein")`
+    `Möchtest du die Reservierung mit Code *${code}* wirklich stornieren? (antworte mit "ja" oder "nein")`,
   );
 }
 
@@ -83,7 +74,7 @@ async function confirmCancel(client, chatId, message) {
     // No code yet; ask the user to provide one.
     await client.sendMessage(
       chatId,
-      "Kein Reservierungscode gefunden. Bitte sende deinen Code (z. B. ABC123)."
+      "Kein Reservierungscode gefunden. Bitte sende deinen Code (z. B. ABC123).",
     );
     // Keep step as confirm_cancel until we have a code
     return;
@@ -98,7 +89,7 @@ async function confirmCancel(client, chatId, message) {
   if (!["ja", "yes", "y"].includes(reply)) {
     await client.sendMessage(
       chatId,
-      'Bitte antworte mit "ja" zum Bestätigen oder "nein" zum Abbrechen.'
+      'Bitte antworte mit "ja" zum Bestätigen oder "nein" zum Abbrechen.',
     );
     return;
   }
@@ -109,34 +100,28 @@ async function confirmCancel(client, chatId, message) {
     if (res.data && res.data.status === "ok") {
       await client.sendMessage(
         chatId,
-        `✅ Deine Reservierung mit dem Code *${code}* wurde storniert.`
+        `✅ Deine Reservierung mit dem Code *${code}* wurde storniert.`,
       );
       logger.info(`Reservation cancelled for ${chatId} (code: ${code})`);
     } else if (res.status === 404 || res.data?.status === "not_found") {
       await client.sendMessage(
         chatId,
-        "❌ Reservierung nicht gefunden. Bitte überprüfe deinen Code."
+        "❌ Reservierung nicht gefunden. Bitte überprüfe deinen Code.",
       );
       logger.warn(`Cancel failed (not found) for ${chatId} (code: ${code})`);
     } else {
       await client.sendMessage(
         chatId,
-        "⚠️ Es gab ein Problem beim Stornieren. Bitte versuche es später erneut."
+        "⚠️ Es gab ein Problem beim Stornieren. Bitte versuche es später erneut.",
       );
-      logger.error(
-        `Cancel failed for ${chatId} (code: ${code}):`,
-        res.data || res.status
-      );
+      logger.error(`Cancel failed for ${chatId} (code: ${code}):`, res.data || res.status);
     }
   } catch (err) {
     logger.error(
       `Error cancelling reservation for ${chatId} (code: ${code}):`,
-      err?.response?.data || err.message
+      err?.response?.data || err.message,
     );
-    await client.sendMessage(
-      chatId,
-      "❌ Fehler beim Stornieren. Bitte versuche es später erneut."
-    );
+    await client.sendMessage(chatId, "❌ Fehler beim Stornieren. Bitte versuche es später erneut.");
   }
 
   await sessions.clear(chatId);

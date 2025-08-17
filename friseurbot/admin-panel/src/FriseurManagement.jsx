@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api from "./api"
+import api from "./api";
 import { Pencil, Trash2, Save, Plus } from "lucide-react";
 
 export default function FriseurManagement() {
@@ -23,7 +23,9 @@ export default function FriseurManagement() {
     }
   };
 
-  useEffect(() => { loadFriseure(); }, []);
+  useEffect(() => {
+    loadFriseure();
+  }, []);
 
   const handleAdd = async () => {
     try {
@@ -54,7 +56,7 @@ export default function FriseurManagement() {
 
   const handleEditSubmit = async () => {
     try {
-      await api.put(`/friseure/${id}`, { name: editName, active: true })
+      await api.put(`/friseure/${id}`, { name: editName, active: true });
       setEditId(null);
       setEditName("");
       loadFriseure();
@@ -66,7 +68,7 @@ export default function FriseurManagement() {
 
   const toggleActive = async (f) => {
     try {
-      await api.put(`/friseure/${id}`, { name: editName, active: true })
+      await api.put(`/friseure/${id}`, { name: editName, active: true });
       loadFriseure();
       showMessage(`✅ Status geändert für ${f.name}`);
     } catch (err) {

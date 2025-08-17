@@ -27,7 +27,6 @@ function BlacklistManagement() {
     }
   }
 
-  // افزودن شماره جدید
   async function addNumber(e) {
     e.preventDefault();
     if (!newNumber) return;
@@ -63,10 +62,7 @@ function BlacklistManagement() {
           onChange={(e) => setNewNumber(e.target.value)}
           className="border p-2 rounded w-full bg-gray-800 text-white placeholder-gray-400"
         />
-        <button
-          type="submit"
-          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
-        >
+        <button type="submit" className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded">
           Hinzufügen
         </button>
       </form>
@@ -80,10 +76,7 @@ function BlacklistManagement() {
       ) : (
         <ul className="space-y-2">
           {numbers.map((n) => (
-            <li
-              key={n.id}
-              className="flex justify-between items-center border p-2 rounded"
-            >
+            <li key={n.id} className="flex justify-between items-center border p-2 rounded">
               <span>{n.phone}</span>
               <button
                 onClick={() => removeNumber(n.phone)}

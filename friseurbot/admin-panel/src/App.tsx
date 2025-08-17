@@ -7,6 +7,7 @@ import SettingsPage from "./SettingsPage";
 import ServiceManagement from "./ServiceManagement";
 import FriseurManagement from "./FriseurManagement";
 import BlacklistManagement from "./BlacklistManagement";
+import FriseurSchedulePage from "./FriseurSchedule";
 
 type PageId =
   | "dashboard"
@@ -15,12 +16,13 @@ type PageId =
   | "services"
   | "friseur"
   | "blacklist"
-  | "benutzer";
+  | "benutzer"
+  | "arbeitszeiten";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activePage, setActivePage] = useState<PageId>(
-    (localStorage.getItem("activePage") as PageId) || "dashboard"
+    (localStorage.getItem("activePage") as PageId) || "dashboard",
   );
 
   useEffect(() => {
@@ -42,7 +44,6 @@ function App() {
     <DashboardLayout
       username={localStorage.getItem("username") ?? ""}
       onLogout={() => {
-        // هر چیزی برای لاگ‌اوت لازم داری
         localStorage.removeItem("token");
         setIsLoggedIn(false);
       }}
@@ -56,6 +57,7 @@ function App() {
       {activePage === "einstellungen" && <SettingsPage />}
       {activePage === "services" && <ServiceManagement />}
       {activePage === "friseur" && <FriseurManagement />}
+      {activePage === "arbeitszeiten" && <FriseurSchedulePage />}
       {activePage === "blacklist" && <BlacklistManagement />}
     </DashboardLayout>
   );

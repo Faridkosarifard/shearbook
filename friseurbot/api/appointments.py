@@ -6,8 +6,6 @@ from sqlalchemy.orm import joinedload
 
 from friseurbot.entity.appointment import Appointment
 from friseurbot.entity.services import Service
-
-# ⬇️ امنیت مشترک
 from friseurbot.security import (
     has_valid_bot_token,
     is_admin_cookie_valid,

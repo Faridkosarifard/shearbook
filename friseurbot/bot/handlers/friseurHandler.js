@@ -6,18 +6,9 @@
  * - Suggests the next 3 available dates (skipping Sundays)
  */
 
-const axios = require("axios");
+const api = require("../utils/backend");
 const sessions = require("../sessions");
 const logger = require("../utils/logger");
-
-// Central axios client configured for Bot auth
-const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
-const BOT_TOKEN = process.env.BOT_TOKEN || "change-me";
-const api = axios.create({
-  baseURL: BACKEND_URL,
-  timeout: 10000,
-  headers: { "X-Bot-Token": BOT_TOKEN },
-});
 
 /**
  * Handle friseur index selection.
@@ -35,7 +26,7 @@ async function handleEnterFriseur(client, chatId, message) {
       logger.warn(`Invalid friseur selection from ${chatId}: ${message}`);
       await client.sendMessage(
         chatId,
-        `❌ Ungültige Eingabe. Bitte gib eine Zahl zwischen 1 und ${friseure.length} ein.`
+        `❌ Ungültige Eingabe. Bitte gib eine Zahl zwischen 1 und ${friseure.length} ein.`,
       );
       return;
     }
@@ -48,9 +39,7 @@ async function handleEnterFriseur(client, chatId, message) {
     session.step = "enter_date";
     await sessions.set(chatId, session);
 
-    logger.info(
-      `Friseur selected by ${chatId}: ${selected.name} (ID: ${selected.id})`
-    );
+    logger.info(`Friseur selected by ${chatId}: ${selected.name} (ID: ${selected.id})`);
 
     // Build next 3 dates (skip Sundays)
     const today = new Date();
@@ -64,9 +53,7 @@ async function handleEnterFriseur(client, chatId, message) {
     session.suggested_dates = dates.map((d) => d.toISOString().split("T")[0]);
     await sessions.set(chatId, session);
 
-    logger.debug(
-      `Suggested dates for ${chatId}: ${session.suggested_dates.join(", ")}`
-    );
+    logger.debug(`Suggested dates for ${chatId}: ${session.suggested_dates.join(", ")}`);
 
     let antwort =
       `✅ Friseur *${selected.name}* wurde ausgewählt.\n\n` +
@@ -78,11 +65,11 @@ async function handleEnterFriseur(client, chatId, message) {
   } catch (err) {
     logger.error(
       `Error fetching friseure for ${chatId}:`,
-      err?.response?.data || err.stack || err.message
+      err?.response?.data || err.stack || err.message,
     );
     await client.sendMessage(
       chatId,
-      "❌ Es gab ein Problem beim Laden der Friseure. Bitte versuch es später erneut."
+      "❌ Es gab ein Problem beim Laden der Friseure. Bitte versuch es später erneut.",
     );
     session.step = "choose_friseur";
     session.friseur_id = null;

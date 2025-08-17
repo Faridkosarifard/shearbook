@@ -1,7 +1,4 @@
-const axios = require("axios");
-
-const BASE_URL =process.env.BACKEND_URL || "http://127.0.0.1:8000";
-const BOT_TOKEN = process.env.BOT_TOKEN || "change-me";
+const api = require("../utils/backend");
 
 const SETTINGS_TTL = parseInt(process.env.FR_SETTINGS_TTL_MS || "60000", 10); // 60s
 
@@ -20,7 +17,6 @@ api.interceptors.request.use((config) => {
 let cache = null;
 let cacheTime = 0;
 
-
 async function fetchAllSettings() {
   const now = Date.now();
   if (cache && now - cacheTime < SETTINGS_TTL) {
@@ -34,11 +30,9 @@ async function fetchAllSettings() {
     return cache;
   }
 
-  
   if (cache) return cache;
-  return {}; 
+  return {};
 }
-
 
 async function getSetting(key, fallback = null) {
   const all = await fetchAllSettings();

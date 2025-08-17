@@ -3,7 +3,7 @@ const axios = require("axios");
 const cron = require("node-cron");
 const qrcode = require("qrcode-terminal");
 const express = require("express");
-const logger = require("../utils/logger")
+const logger = require("../utils/logger");
 const app = express();
 
 app.use(express.json());

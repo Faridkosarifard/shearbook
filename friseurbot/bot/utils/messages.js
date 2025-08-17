@@ -1,8 +1,5 @@
-
-
 const logger = require("./logger");
 const { getSetting, fetchAllSettings } = require("../utils/settingsHelper");
-
 
 const DEFAULT_HELP_MESSAGE =
   `❓ Ich habe Ihre Nachricht nicht verstanden.\n\n` +
@@ -35,7 +32,6 @@ async function refreshHelpMessage() {
   }
   return val;
 }
-
 
 async function invalidateHelpMessageCache() {
   try {

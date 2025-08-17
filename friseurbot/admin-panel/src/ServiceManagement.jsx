@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api from "./api"
+import api from "./api";
 import { Pencil, Trash2, ArrowUp, ArrowDown, Save, Plus } from "lucide-react";
 
 export default function ServiceManagement() {
@@ -18,7 +18,7 @@ export default function ServiceManagement() {
 
   const loadServices = async () => {
     try {
-      const res = await  api.get("/services");
+      const res = await api.get("/services");
       setServices(res.data);
     } catch (err) {
       console.error("❌ Fehler beim Laden:", err);
@@ -32,7 +32,7 @@ export default function ServiceManagement() {
 
   const handleAdd = async () => {
     try {
-      await api.post("/services", { name: newService, duration: newDuration })
+      await api.post("/services", { name: newService, duration: newDuration });
       setNewService("");
       setNewDuration(30);
       loadServices();
@@ -63,7 +63,7 @@ export default function ServiceManagement() {
 
   const handleEditSubmit = async () => {
     try {
-      await api.put(`/services/${editId}`, { name: editService, duration: editDuration })
+      await api.put(`/services/${editId}`, { name: editService, duration: editDuration });
       setEditId(null);
       setEditService("");
       setEditDuration(30);
