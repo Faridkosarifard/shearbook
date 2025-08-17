@@ -1,7 +1,7 @@
 // api.ts
 import axios, { AxiosHeaders, InternalAxiosRequestConfig } from "axios";
 
-const BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+const BASE_URL = import.meta.env.VITE_API_URL || "/api";
 const api = axios.create({
   baseURL: BASE_URL,
   withCredentials: true,
@@ -22,7 +22,6 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
       if (config.headers instanceof AxiosHeaders) {
         config.headers.set("X-CSRF-Token", csrf);
       } else {
-        // اطمینان از سازگاری تایپی
         const hdrs = new AxiosHeaders(config.headers as any);
         hdrs.set("X-CSRF-Token", csrf);
         config.headers = hdrs;
