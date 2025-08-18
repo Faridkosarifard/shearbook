@@ -1,7 +1,8 @@
+// TerminListe.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
-import { format, parse, startOfWeek, getDay } from "date-fns";
+import { format, parse, startOfWeek, getDay, isValid as isValidDate } from "date-fns";
 import de from "date-fns/locale/de";
 import api from "./api";
 import axios from "axios";
@@ -18,17 +19,13 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
-// stable color map per friseur
-const palette = [
-  "#60a5fa", "#f59e0b", "#10b981", "#ef4444", "#a78bfa",
-  "#f97316", "#14b8a6", "#eab308", "#8b5cf6", "#fb7185"
-];
+// Color helpers
+const palette = ["#60a5fa","#f59e0b","#10b981","#ef4444","#a78bfa","#f97316","#14b8a6","#eab308","#8b5cf6","#fb7185"];
 const friseurColor = (id) => {
-  if (!id && id !== 0) return "#94a3b8";
+  if (id === null || id === undefined) return "#94a3b8";
   const idx = Math.abs(parseInt(id, 10)) % palette.length;
   return palette[idx];
 };
-
 function getColorForService(serviceName) {
   const s = (serviceName || "").toLowerCase();
   if (s.includes("damen")) return "#fbbf24";
@@ -36,29 +33,14 @@ function getColorForService(serviceName) {
   return "#a78bfa";
 }
 
-// Custom toolbar with modern buttons
+// Fancy toolbar
 function Toolbar({ label, onNavigate, onView, view }) {
   return (
-    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
       <div className="flex items-center gap-2">
-        <button
-          onClick={() => onNavigate("TODAY")}
-          className="px-3 py-1.5 rounded-full bg-white border text-gray-700 hover:bg-gray-50 shadow-sm"
-        >
-          Heute
-        </button>
-        <button
-          onClick={() => onNavigate("PREV")}
-          className="px-3 py-1.5 rounded-full bg-white border text-gray-700 hover:bg-gray-50 shadow-sm"
-        >
-          ⟵
-        </button>
-        <button
-          onClick={() => onNavigate("NEXT")}
-          className="px-3 py-1.5 rounded-full bg-white border text-gray-700 hover:bg-gray-50 shadow-sm"
-        >
-          ⟶
-        </button>
+        <button onClick={() => onNavigate("TODAY")} className="px-3 py-1.5 rounded-full bg-white border text-gray-700 hover:bg-gray-50 shadow-sm">Heute</button>
+        <button onClick={() => onNavigate("PREV")} className="px-3 py-1.5 rounded-full bg-white border text-gray-700 hover:bg-gray-50 shadow-sm">⟵</button>
+        <button onClick={() => onNavigate("NEXT")} className="px-3 py-1.5 rounded-full bg-white border text-gray-700 hover:bg-gray-50 shadow-sm">⟶</button>
         <span className="ml-2 text-lg font-semibold text-gray-800">{label}</span>
       </div>
       <div className="flex items-center gap-2">
@@ -71,9 +53,7 @@ function Toolbar({ label, onNavigate, onView, view }) {
             key={v.key}
             onClick={() => onView(v.key)}
             className={`px-3 py-1.5 rounded-full border shadow-sm ${
-              view === v.key
-                ? "bg-blue-600 text-white border-blue-600"
-                : "bg-white text-gray-700 hover:bg-gray-50"
+              view === v.key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 hover:bg-gray-50"
             }`}
           >
             {v.label}
@@ -95,13 +75,16 @@ export default function TerminListe() {
   const [freeTimes, setFreeTimes] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
 
-  // NEW: friseure list + filter
+  // Stylists & filters
   const [friseure, setFriseure] = useState([]);
-  const [selectedFriseur, setSelectedFriseur] = useState("all"); // "all" or friseur_id
+  const [selectedFriseur, setSelectedFriseur] = useState("all"); // "all" | id
+  const [resourceView, setResourceView] = useState(false);       // toggle column view
+
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const calendarRef = useRef(null);
 
-  // Load friseure for filter dropdown
   const loadFriseure = async () => {
     try {
       const res = await api.get("/friseure");
@@ -111,50 +94,67 @@ export default function TerminListe() {
     }
   };
 
-  const mapAppointments = (rows = []) =>
-    rows.map((appt) => {
-      const start = new Date(`${appt.date}T${appt.time}`);
-      const end = new Date(start.getTime() + (appt.duration || 60) * 60000);
-      return {
-        id: appt.id,
+  const mapAppointments = (rows = []) => {
+    const out = [];
+    rows.forEach((appt, i) => {
+      const dateStr = appt.date;
+      const timeStr = appt.time;     // "HH:MM"
+      const dur = Number(appt.duration) || 60;
+
+      // Build start date
+      const startIso = `${dateStr}T${timeStr}:00`;
+      const start = new Date(startIso);
+
+      if (!(start instanceof Date) || !isValidDate(start)) {
+        console.warn("[UI] Skipping invalid appointment start:", appt);
+        return;
+      }
+
+      const end = new Date(start.getTime() + dur * 60000);
+      if (!(end instanceof Date) || !isValidDate(end) || end <= start) {
+        console.warn("[UI] Fixing invalid end; using +60m fallback:", appt);
+      }
+
+      out.push({
+        id: appt.id ?? i,
         title: `${appt.name} – ${appt.service}`,
         start,
-        end,
+        end: ((end instanceof Date) && isValidDate(end) && end > start) ? end : new Date(start.getTime() + 60 * 60000),
         service: appt.service,
         name: appt.name,
         reservation_code: appt.reservation_code,
-        duration: appt.duration || 60,
-        friseur_id: appt.friseur_id,        // <-- needed for filtering
-        friseur_name: appt.friseur_name || "", // optional, nice for legend
-      };
+        duration: dur,
+        friseur_id: appt.friseur_id ?? null,
+        friseur_name: appt.friseur_name ?? "",
+        resourceId: appt.friseur_id ?? undefined, // for resource view
+      });
     });
+    return out;
+  };
 
-  // Load appointments (optionally server-side filtered)
   const loadAppointments = async (friseurId = "all") => {
+    setLoading(true);
+    setLoadError("");
     try {
-      let res;
+      let res = await api.get("/appointments");
+      const all = mapAppointments(res.data);
+      console.log("[UI] loaded appointments:", all.length);
+
+      // server-side filter optional; for now client-side
+      let base = all;
       if (friseurId !== "all") {
-        // If backend supports query param filtering:
-        // res = await api.get("/appointments", { params: { friseur_id: friseurId } });
-        // If not supported, just fetch all and filter client-side:
-        res = await api.get("/appointments");
-        const all = mapAppointments(res.data);
-        const filtered = all.filter((e) => `${e.friseur_id}` === `${friseurId}`);
-        setEvents(filtered);
-        setFilteredEvents(applySearch(filtered, searchTerm));
-        return;
-      } else {
-        res = await api.get("/appointments");
+        base = all.filter((e) => `${e.friseur_id}` === `${friseurId}`);
       }
-      const items = mapAppointments(res.data);
-      setEvents(items);
-      setFilteredEvents(applySearch(items, searchTerm));
+      setEvents(base);
+      setFilteredEvents(applySearch(base, searchTerm));
     } catch (err) {
       console.error("Fehler beim Laden der Termine:", err);
+      setLoadError("Termine konnten nicht geladen werden.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Search helper
   const applySearch = (list, term) => {
     const t = (term || "").toLowerCase();
     if (!t) return list;
@@ -172,17 +172,14 @@ export default function TerminListe() {
     loadAppointments("all");
   }, []);
 
-  // Re-apply search when term or base events change
   useEffect(() => {
     setFilteredEvents(applySearch(events, searchTerm));
   }, [searchTerm, events]);
 
-  // Refetch appointments when friseur filter changes
   useEffect(() => {
     loadAppointments(selectedFriseur);
   }, [selectedFriseur]);
 
-  // Event styling: combine service color hue with stylist accent ring
   const eventStyleGetter = (event) => {
     const bg = getColorForService(event.service || "");
     const ring = friseurColor(event.friseur_id);
@@ -195,36 +192,17 @@ export default function TerminListe() {
         padding: "4px 12px",
         fontSize: "0.85rem",
         fontWeight: 700,
-        boxShadow: "0 4px 10px rgba(0,0,0,0.08)",
+        boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
         cursor: "pointer",
         transition: "transform 0.2s ease",
       },
     };
   };
 
-  const handleDelete = async () => {
-    if (!selectedEvent?.reservation_code) return;
-    if (!confirm("Diesen Termin wirklich löschen?")) return;
-    try {
-      await api.delete(`/cancel-reservation/${selectedEvent.reservation_code}`);
-      setEvents((prev) =>
-        prev.filter((e) => e.reservation_code !== selectedEvent.reservation_code)
-      );
-      setSelectedEvent(null);
-    } catch (err) {
-      console.error("Fehler beim Löschen:", err);
-      alert("Löschen fehlgeschlagen.");
-    }
-  };
-
   const fetchFreeTimes = async (date, duration, friseur_id) => {
     const dateStr = format(date, "yyyy-MM-dd");
     try {
-      const res = await api.post("/free-times", {
-        date: dateStr,
-        duration,
-        friseur_id, // so backend uses stylist’s personal schedule
-      });
+      const res = await api.post("/free-times", { date: dateStr, duration, friseur_id });
       setFreeTimes(res.data.slots || []);
     } catch (err) {
       console.error("Fehler beim Abrufen der freien Zeiten:", err);
@@ -261,22 +239,21 @@ export default function TerminListe() {
 
   // Legend for stylists
   const legend = useMemo(() => {
-    const list = selectedFriseur === "all"
-      ? friseure
-      : friseure.filter((f) => `${f.id}` === `${selectedFriseur}`);
-    return list.map((f) => ({
-      id: f.id,
-      name: f.name,
-      color: friseurColor(f.id),
-    }));
+    const list = selectedFriseur === "all" ? friseure : friseure.filter((f) => `${f.id}` === `${selectedFriseur}`);
+    return list.map((f) => ({ id: f.id, name: f.name, color: friseurColor(f.id) }));
   }, [friseure, selectedFriseur]);
 
+  // Resources (for column view)
+  const resources = useMemo(() => {
+    if (!resourceView) return [];
+    const list = selectedFriseur === "all" ? friseure : friseure.filter((f) => `${f.id}` === `${selectedFriseur}`);
+    return list.map((f) => ({ resourceId: f.id, resourceTitle: f.name }));
+  }, [friseure, selectedFriseur, resourceView]);
+
   return (
-    <div className="w-full p-4 bg-gradient-to-br from-white via-gray-50 to-gray-100 dark:from-gray-800 dark:via-gray-900 dark:to-gray-800 rounded-xl shadow-lg">
+    <div className="w-full p-4 bg-gradient-to-br from-white via-gray-50 to-gray-100 dark:from-gray-800 dark:via-gray-900 dark:to-gray-800 rounded-2xl shadow-xl">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 gap-3 w-full">
-        <h2 className="text-2xl font-bold text-gray-700 dark:text-gray-100">
-          📆 Termin-Kalender
-        </h2>
+        <h2 className="text-2xl font-bold text-gray-700 dark:text-gray-100">📆 Termin-Kalender</h2>
 
         <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
           {/* Stylist filter */}
@@ -287,11 +264,20 @@ export default function TerminListe() {
           >
             <option value="all">👥 Alle Friseure</option>
             {friseure.map((f) => (
-              <option key={f.id} value={f.id}>
-                💇 {f.name}
-              </option>
+              <option key={f.id} value={f.id}>💇 {f.name}</option>
             ))}
           </select>
+
+          {/* Resource view toggle */}
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={resourceView}
+              onChange={(e) => setResourceView(e.target.checked)}
+              className="rounded"
+            />
+            Spalten nach Friseur
+          </label>
 
           {/* Search */}
           <input
@@ -315,19 +301,16 @@ export default function TerminListe() {
       {/* Legend */}
       <div className="flex flex-wrap items-center gap-3 mb-3">
         {legend.map((l) => (
-          <span
-            key={l.id}
-            className="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-white shadow-sm"
-          >
-            <span
-              className="inline-block w-3 h-3 rounded-full"
-              style={{ backgroundColor: l.color }}
-              title={l.name}
-            />
+          <span key={l.id} className="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-white shadow-sm">
+            <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: l.color }} title={l.name} />
             <span className="text-sm text-gray-700">{l.name}</span>
           </span>
         ))}
       </div>
+
+      {/* Loading / error states */}
+      {loading && <div className="p-3 text-sm text-gray-600">⏳ Termine werden geladen…</div>}
+      {loadError && <div className="p-3 text-sm text-red-600">{loadError}</div>}
 
       <div className="w-full overflow-x-auto">
         <Calendar
@@ -343,6 +326,9 @@ export default function TerminListe() {
           eventPropGetter={eventStyleGetter}
           popup
           components={{ toolbar: Toolbar }}
+          resources={resourceView ? resources : undefined}
+          resourceIdAccessor="resourceId"
+          resourceTitleAccessor="resourceTitle"
           messages={{
             week: "Woche",
             day: "Tag",
@@ -353,7 +339,6 @@ export default function TerminListe() {
             noEventsInRange: "Keine Termine im gewählten Zeitraum.",
           }}
           onSelectEvent={(event) => setSelectedEvent(event)}
-          // nicer times
           step={15}
           timeslots={2}
           min={new Date(1970, 0, 1, 8, 0, 0)}
@@ -362,44 +347,27 @@ export default function TerminListe() {
       </div>
 
       {showAddModal && (
-        <AddAppointmentModal onClose={() => setShowAddModal(false)} onAdd={() => loadAppointments(selectedFriseur)} />
+        <AddAppointmentModal
+          onClose={() => setShowAddModal(false)}
+          onAdd={() => loadAppointments(selectedFriseur)}
+        />
       )}
 
       {selectedEvent && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-2xl max-w-md w-full border border-gray-200 dark:border-gray-700">
-            <h3 className="text-xl font-bold mb-2 text-blue-700 dark:text-blue-300">
-              🔎 Termin-Details
-            </h3>
+            <h3 className="text-xl font-bold mb-2 text-blue-700 dark:text-blue-300">🔎 Termin-Details</h3>
 
             {!editMode ? (
               <>
                 <p className="mb-1"><span className="font-semibold">Name:</span> {selectedEvent.name}</p>
                 <p className="mb-1"><span className="font-semibold">Service:</span> {selectedEvent.service}</p>
                 <p className="mb-1"><span className="font-semibold">Friseur:</span> {selectedEvent.friseur_name || selectedEvent.friseur_id}</p>
-                <p className="mb-4">
-                  <span className="font-semibold">Zeit:</span>{" "}
-                  {format(selectedEvent.start, "HH:mm")} – {format(selectedEvent.end, "HH:mm")}
-                </p>
+                <p className="mb-4"><span className="font-semibold">Zeit:</span> {format(selectedEvent.start, "HH:mm")} – {format(selectedEvent.end, "HH:mm")}</p>
                 <div className="flex justify-end flex-wrap gap-2">
-                  <button
-                    onClick={() => setSelectedEvent(null)}
-                    className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400 transition"
-                  >
-                    Schließen
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition"
-                  >
-                    ❌ Löschen
-                  </button>
-                  <button
-                    onClick={handleEditStart}
-                    className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 transition"
-                  >
-                    📝 Bearbeiten
-                  </button>
+                  <button onClick={() => setSelectedEvent(null)} className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400 transition">Schließen</button>
+                  <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">❌ Löschen</button>
+                  <button onClick={handleEditStart} className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 transition">📝 Bearbeiten</button>
                 </div>
               </>
             ) : (
@@ -416,29 +384,13 @@ export default function TerminListe() {
                 </div>
                 <div className="mb-6">
                   <label className="block text-sm mb-1 font-semibold">🕒 Neue Uhrzeit</label>
-                  <select
-                    value={editTime}
-                    onChange={(e) => setEditTime(e.target.value)}
-                    className="w-full border px-3 py-2 rounded"
-                  >
-                    {freeTimes.map((slot) => (
-                      <option key={slot} value={slot}>{slot}</option>
-                    ))}
+                  <select value={editTime} onChange={(e) => setEditTime(e.target.value)} className="w-full border px-3 py-2 rounded">
+                    {freeTimes.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
                   </select>
                 </div>
                 <div className="flex justify-end flex-wrap gap-2">
-                  <button
-                    onClick={() => setEditMode(false)}
-                    className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400 transition"
-                  >
-                    Abbrechen
-                  </button>
-                  <button
-                    onClick={handleEditSubmit}
-                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
-                  >
-                    Speichern
-                  </button>
+                  <button onClick={() => setEditMode(false)} className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400 transition">Abbrechen</button>
+                  <button onClick={handleEditSubmit} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">Speichern</button>
                 </div>
               </>
             )}
