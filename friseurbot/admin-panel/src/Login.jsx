@@ -1,4 +1,6 @@
+// src/Login.jsx
 import { useState } from "react";
+import PropTypes from "prop-types";
 import api from "./api";
 
 export default function Login({ onLoginSuccess }) {
@@ -11,8 +13,8 @@ export default function Login({ onLoginSuccess }) {
     setError(null);
     try {
       const res = await api.post("/auth/login", { username, password });
-      if (res.data.status === "ok") {
-        onLoginSuccess(res.data.username);
+      if (res.data?.status === "ok") {
+        onLoginSuccess(res.data.username ?? username);
       } else {
         setError("Benutzername oder Passwort ist falsch.");
       }
@@ -61,3 +63,7 @@ export default function Login({ onLoginSuccess }) {
     </div>
   );
 }
+
+Login.propTypes = {
+  onLoginSuccess: PropTypes.func.isRequired,
+};

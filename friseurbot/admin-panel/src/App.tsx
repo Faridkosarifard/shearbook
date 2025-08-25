@@ -1,4 +1,6 @@
+// src/App.tsx
 import { useEffect, useState } from "react";
+import api from "./api";
 import Login from "./Login";
 import DashboardLayout from "./DashboardLayout";
 import TerminListe from "./TerminListe";
@@ -20,20 +22,34 @@ type PageId =
   | "arbeitszeiten";
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+  const [username, setUsername] = useState<string>(localStorage.getItem("username") ?? "");
   const [activePage, setActivePage] = useState<PageId>(
     (localStorage.getItem("activePage") as PageId) || "dashboard",
   );
 
+  // On refresh, verify admin cookie + refresh CSRF
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) setIsLoggedIn(true);
+    (async () => {
+      try {
+        const r = await api.get("/auth/csrf"); // requires valid admin cookie
+        setIsLoggedIn(r.data?.status === "ok");
+      } catch {
+        setIsLoggedIn(false);
+      }
+    })();
   }, []);
+
+  if (isLoggedIn === null) {
+    return <div className="p-6 text-gray-600">Lade…</div>;
+  }
 
   if (!isLoggedIn) {
     return (
       <Login
-        onLoginSuccess={() => {
+        onLoginSuccess={(u: string) => {
+          setUsername(u);
+          localStorage.setItem("username", u);
           setIsLoggedIn(true);
         }}
       />
@@ -42,9 +58,13 @@ function App() {
 
   return (
     <DashboardLayout
-      username={localStorage.getItem("username") ?? ""}
-      onLogout={() => {
-        localStorage.removeItem("token");
+      username={username}
+      onLogout={async () => {
+        try {
+          await api.post("/auth/logout");
+        } catch {}
+        localStorage.removeItem("username");
+        setUsername("");
         setIsLoggedIn(false);
       }}
       setActivePage={(p: PageId) => {
