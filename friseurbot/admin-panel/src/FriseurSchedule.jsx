@@ -37,6 +37,17 @@ function notify(ok, msg) {
   alert(msg);
 }
 
+function enumerateDatesInclusive(startISO, endISO) {
+  const start = dayjs(startISO, "YYYY-MM-DD");
+  const end = dayjs(endISO, "YYYY-MM-DD");
+  if (!start.isValid() || !end.isValid()) return [];
+  const out = [];
+  for (let d = start; d.diff(end, "day") <= 0; d = d.add(1, "day")) {
+    out.push(d.format("YYYY-MM-DD"));
+  }
+  return out;
+}
+
 export default function FriseurSchedulePage() {
   const [loading, setLoading] = useState(false);
   const [friseurs, setFriseurs] = useState([]);
@@ -44,6 +55,8 @@ export default function FriseurSchedulePage() {
   const [weekly, setWeekly] = useState([]); // [{weekday, start, end, id?}]
   const [exceptions, setExceptions] = useState([]); // [{id, date, type, start?, end?, note?}]
   const [exForm, setExForm] = useState({ type: "OFF", date: "", start: "", end: "", note: "" });
+  const [range, setRange] = useState({ startDate: "", endDate: "" }); // YYYY-MM-DD
+  const [rangeMode, setRangeMode] = useState(false);
   const [saving, setSaving] = useState(false);
 
   /** Group weekly by weekday for rendering */
@@ -171,7 +184,17 @@ export default function FriseurSchedulePage() {
 
   /** Exceptions operations */
   function validateExceptionForm() {
-    if (!exForm.date) return "Date is required.";
+    if (!rangeMode) {
+      if (!exForm.date) return "Date is required.";
+    } else {
+      if (!range.startDate || !range.endDate) return "Start and end dates are required for range mode.";
+      if (dayjs(range.endDate).isBefore(dayjs(range.startDate), "day")) {
+        return "End date must be on or after start date.";
+      }
+      // Optional: cap extremely large ranges
+      const days = enumerateDatesInclusive(range.startDate, range.endDate).length;
+      if (days > 90) return "Range too large (limit 90 days).";
+    }
     if (exForm.type === "CUSTOM") {
       if (!isValidHHMM(exForm.start) || !isValidHHMM(exForm.end)) {
         return "Start and end times are required and must be HH:MM.";
@@ -183,12 +206,58 @@ export default function FriseurSchedulePage() {
     return null;
   }
 
+  async function addExceptionRange() {
+    if (!selectedId) return;
+    const days = enumerateDatesInclusive(range.startDate, range.endDate);
+    if (days.length === 0) {
+      notify(false, "Invalid date range.");
+      return;
+    }
+  
+    // Confirm for large ranges
+    if (days.length > 14) {
+      const ok = window.confirm(`This will create ${days.length} OFF/CUSTOM exceptions (one per day). Continue?`);
+      if (!ok) return;
+    }
+  
+    setSaving(true);
+    try {
+      const requests = days.map((d) => {
+        const payload = {
+          type: exForm.type,
+          date: d,
+          note: exForm.note || undefined,
+          ...(exForm.type === "CUSTOM" ? { start: exForm.start, end: exForm.end } : {}),
+        };
+        return api.post(`${API_PREFIX}/friseure/${selectedId}/exceptions`, payload);
+      });
+  
+      const results = await Promise.allSettled(requests);
+      const okCount = results.filter((r) => r.status === "fulfilled").length;
+      const failCount = results.length - okCount;
+  
+      notify(true, `Added ${okCount} day(s).${failCount ? ` ${failCount} failed.` : ""}`);
+      // Reset form
+      setExForm({ type: "OFF", date: "", start: "", end: "", note: "" });
+      setRange({ startDate: "", endDate: "" });
+      setRangeMode(false);
+      await loadSchedule(selectedId);
+    } catch (e) {
+      notify(false, e?.response?.data?.message || "Failed to add range exceptions.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function addException() {
     if (!selectedId) return;
     const err = validateExceptionForm();
     if (err) {
       notify(false, err);
       return;
+    }
+    if (rangeMode) {
+      return addExceptionRange();
     }
     setSaving(true);
     try {
@@ -325,7 +394,7 @@ export default function FriseurSchedulePage() {
             <h2 className="font-semibold mb-3">Exceptions</h2>
 
             {/* Add exception form */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end mb-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Type</label>
                 <select
@@ -338,15 +407,52 @@ export default function FriseurSchedulePage() {
                 </select>
               </div>
 
+              {/* Range toggle */}
               <div>
-                <label className="block text-sm font-medium mb-1">Date</label>
-                <input
-                  type="date"
-                  className="w-full border rounded p-2"
-                  value={exForm.date}
-                  onChange={(e) => setExForm((s) => ({ ...s, date: e.target.value }))}
-                />
+                <label className="block text-sm font-medium mb-1">Mode</label>
+                <label className="inline-flex items-center gap-2 border rounded p-2 h-10">
+                  <input
+                    type="checkbox"
+                    checked={rangeMode}
+                    onChange={(e) => setRangeMode(e.target.checked)}
+                  />
+                  <span>Range (vacation)</span>
+                </label>
               </div>
+
+              {/* Single date OR Range dates */}
+              {!rangeMode ? (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Date</label>
+                  <input
+                    type="date"
+                    className="w-full border rounded p-2"
+                    value={exForm.date}
+                    onChange={(e) => setExForm((s) => ({ ...s, date: e.target.value }))}
+                  />
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Start date</label>
+                    <input
+                      type="date"
+                      className="w-full border rounded p-2"
+                      value={range.startDate}
+                      onChange={(e) => setRange((r) => ({ ...r, startDate: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">End date</label>
+                    <input
+                      type="date"
+                      className="w-full border rounded p-2"
+                      value={range.endDate}
+                      onChange={(e) => setRange((r) => ({ ...r, endDate: e.target.value }))}
+                    />
+                  </div>
+                </>
+              )}
 
               {exForm.type === "CUSTOM" && (
                 <>
@@ -371,7 +477,7 @@ export default function FriseurSchedulePage() {
                 </>
               )}
 
-              <div className="md:col-span- ex-1">
+                <div className="md:col-span-2">
                 <label className="block text-sm font-medium mb-1">Note (optional)</label>
                 <input
                   type="text"

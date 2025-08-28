@@ -11,6 +11,30 @@ function formatDateDE(iso) {
   return dayjs(iso).format("dddd, DD.MM.YYYY");
 }
 
+// ---map server reason -> user-facing message (German) ---
+function reasonText(reason) {
+  switch (reason) {
+    case "public_holiday":
+      return "🎉 Feiertag in Baden-Württemberg – der Salon ist geschlossen.";
+    case "stylist_off":
+      return "🛌 Der ausgewählte Friseur ist an diesem Tag nicht im Dienst.";
+    case "global_day_off":
+      return "🏝️ Der Salon ist an diesem Tag geschlossen.";
+    case "closed_weekly":
+      return "🚫 Der Friseur arbeitet an diesem Wochentag nicht.";
+    case "no_calendar":
+      return "⚠️ Für diesen Friseur ist kein Kalender hinterlegt.";
+    case "fully_booked":
+      return "😕 An diesem Tag sind bereits alle Zeiten belegt.";
+    case "no_windows":
+      return "⚠️ Für diesen Tag gibt es keine buchbaren Arbeitsfenster.";
+    case "invalid":
+      return "❗️ Ungültiges Datum/Anfrage.";
+    default:
+      return "Keine freien Zeiten an diesem Datum.";
+  }
+}
+
 /**
  * Fetch free slots for a stylist on a given date.
  * Backend applies:
@@ -93,14 +117,22 @@ async function promptDatesOnly(client, chatId, session, stylistName, dateItems /
  */
 async function showSlotsForDate(client, chatId, session, dateISO) {
   const duration = session?.service?.duration || 30;
-  const slots = await getFreeTimes({
+
+  const { slots, reason } = await getFreeTimesWithReason({
     date: dateISO,
     duration,
     friseur_id: session.friseur_id,
   });
 
-  if (!Array.isArray(slots) || slots.length === 0) return false;
+  if (!Array.isArray(slots) || slots.length === 0) {
+    // Remember last reason so bookingHandler can craft a specific message
+    session.last_no_slots_reason = reason || null;
+    await sessions.set(chatId, session);
+    return false;
+  }
 
+  // Clear any old reason when we do have slots
+  session.last_no_slots_reason = null;
   session.available_slots = slots;
   session.step = "choose_time";
   await sessions.set(chatId, session);
@@ -137,10 +169,11 @@ async function handleSuggestedDateSelection(client, chatId, message) {
 
   const ok = await showSlotsForDate(client, chatId, session, chosenDate);
   if (!ok) {
-    // Edge case: suggested date no longer has slots (concurrent booking)
+    const reason = (await sessions.get(chatId))?.last_no_slots_reason || null;
+    const header = reasonText(reason);
     await client.sendMessage(
       chatId,
-      "Für dieses Datum sind keine freien Zeiten mehr verfügbar. Bitte ein anderes Datum (YYYY-MM-DD) senden.",
+      `${header} Bitte ein anderes Datum (YYYY-MM-DD) senden.`,
     );
     session.step = "enter_date";
     session.suggested_dates = null;
@@ -148,11 +181,22 @@ async function handleSuggestedDateSelection(client, chatId, message) {
   }
 }
 
+
+async function getFreeTimesWithReason({ date, duration, friseur_id }) {
+  const res = await api.post("/free-times", { date, duration, friseur_id });
+  const data = res?.data || {};
+  const slots = Array.isArray(data.slots) ? data.slots : [];
+  const reason = typeof data.reason === "string" ? data.reason : null;
+  return { slots, reason };
+}
+
 module.exports = {
   formatDateDE,
   getFreeTimes,
   suggestNextDatesOnly,
+  getFreeTimesWithReason,
   promptDatesOnly,
   showSlotsForDate,
   handleSuggestedDateSelection,
+  reasonText,
 };

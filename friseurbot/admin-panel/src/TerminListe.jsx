@@ -348,6 +348,8 @@ export default function TerminListe() {
 
       {showAddModal && (
         <AddAppointmentModal
+          friseure={friseure}
+          defaultFriseurId={selectedFriseur === "all" ? null : selectedFriseur}
           onClose={() => setShowAddModal(false)}
           onAdd={() => loadAppointments(selectedFriseur)}
         />

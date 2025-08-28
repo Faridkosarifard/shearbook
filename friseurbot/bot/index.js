@@ -119,13 +119,13 @@ client.on("message", async (msg) => {
   }
 
   // === CANCEL COMMAND ===
-  if (message.startsWith("stornieren ")) {
+  if (message === "absagen" || message.startsWith("absagen ")) {
     await cancelHandler.handleCancelCommand(client, chatId, messageRaw);
     return;
   }
 
   // === CHANGE COMMAND ===
-  if (message.startsWith("ändern ")) {
+  if (message === "ändern" || message.startsWith("ändern ")) {
     await changeHandler.handleChangeCommand(client, chatId, messageRaw);
     return;
   }

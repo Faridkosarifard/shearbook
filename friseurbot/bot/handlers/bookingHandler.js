@@ -15,10 +15,34 @@ const {
   handleSuggestedDateSelection,
   suggestNextDatesOnly,
   promptDatesOnly,
+  reasonText,
 } = require("./availabilityHandler");
 
 function getPhoneFromChatId(chatId) {
   return chatId.split("@")[0];
+}
+
+function normalizeDateInput(s = "") {
+  const raw = String(s || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  // DD.MM.YYYY
+  let m = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (m) {
+    const dd = m[1];
+    const mm = m[2];
+    const yyyy = m[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  // DD/MM/YYYY
+  m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) {
+    const dd = m[1];
+    const mm = m[2];
+    const yyyy = m[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return null;
 }
 
 /**
@@ -139,9 +163,8 @@ async function handleEnterFriseur(client, chatId, message) {
  */
 async function handleEnterDate(client, chatId, message) {
   const session = (await sessions.get(chatId)) || {};
-
-  const isDateFormat = /^\d{4}-\d{2}-\d{2}$/.test(message);
-  const isIndex = /^[1-9]\d*$/.test(message);
+  const normalized = normalizeDateInput(message || "");
+  const isIndex = /^[1-9]\d*$/.test((message || "").trim());
 
   // If user picked one of the suggested dates by index, delegate and exit
   if (isIndex && Array.isArray(session.suggested_dates) && session.suggested_dates.length) {
@@ -150,13 +173,16 @@ async function handleEnterDate(client, chatId, message) {
   }
 
   // If user typed a concrete date, try to show slots for that date
-  if (isDateFormat) {
-    session.date = message;
+  if (normalized) {
+    session.date = normalized;
     await sessions.set(chatId, session);
 
     // showSlotsForDate sends the message itself and returns true/false
     const ok = await showSlotsForDate(client, chatId, session, session.date);
     if (ok) return;
+
+    const freshSession = (await sessions.get(chatId)) || {};
+    const header = reasonText(freshSession.last_no_slots_reason || null);
 
     // No slots on that date → propose next available dates (dates only, no time preview)
     const duration = session?.service?.duration || 30;
@@ -165,19 +191,24 @@ async function handleEnterDate(client, chatId, message) {
       maxSuggestions: 3,
     });
 
-    const sent = await promptDatesOnly(
-      client,
-      chatId,
-      session,
-      session.friseur_name || "ausgewählter Friseur",
-      suggestions,
-    );
+    const sent = await (async () => {
+      if (!Array.isArray(suggestions) || suggestions.length === 0) return false;
+      let msg = `${header}\n\nNächste verfügbare Tage:\n`;
+      suggestions.forEach((d, i) => {
+        msg += `${i + 1}. ${d.date}\n`;
+      });
+      msg += "Bitte antworte mit der Zahl, um das Datum auszuwählen.";
+      await client.sendMessage(chatId, msg);
+      session.step = "enter_date";
+      session.suggested_dates = suggestions.map((d) => d.date);
+      await sessions.set(chatId, session);
+      return true;
+    })();
 
     if (!sent) {
-      // Still nothing to suggest
       await client.sendMessage(
         chatId,
-        "Leider gibt es keine freien Zeiten 😔. Bitte gib ein anderes Datum (YYYY-MM-DD) ein.",
+        `${header} Bitte gib ein anderes Datum im Format YYYY-MM-DD oder DD.MM.YYYY ein.`,
       );
       session.step = "enter_date";
       session.suggested_dates = null;
@@ -189,7 +220,7 @@ async function handleEnterDate(client, chatId, message) {
   // Invalid input
   await client.sendMessage(
     chatId,
-    "❗️ Ungültige Eingabe. Bitte gib eine Zahl (1..N) oder ein gültiges Datum (YYYY-MM-DD) ein.",
+    "❗️ Ungültige Eingabe. Bitte gib eine Zahl (1..N) oder ein gültiges Datum im Format YYYY-MM-DD oder DD.MM.YYYY ein.",
   );
 }
 

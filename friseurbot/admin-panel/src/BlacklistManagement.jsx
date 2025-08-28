@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from "react";
 import api from "./api";
 
-const API_URL = "/blacklist";
+const API_URL = "";
 
 function BlacklistManagement() {
   const [numbers, setNumbers] = useState([]);
   const [newNumber, setNewNumber] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  const API_URL = "http://localhost:5000/blacklist";
 
   useEffect(() => {
     fetchNumbers();
@@ -18,7 +16,7 @@ function BlacklistManagement() {
   async function fetchNumbers() {
     try {
       setLoading(true);
-      const res = await api.get(API_URL);
+      const res = await api.get(`${API_URL}/blacklist`);
       setNumbers(res.data);
     } catch (err) {
       setError("Fehler beim Laden der Blacklist");
@@ -32,7 +30,7 @@ function BlacklistManagement() {
     if (!newNumber) return;
 
     try {
-      await api.post(API_URL, { phone: newNumber });
+      await api.post(`${API_URL}/blacklist`, { phone: newNumber });
       setNewNumber("");
       fetchNumbers();
     } catch (err) {
@@ -40,10 +38,10 @@ function BlacklistManagement() {
     }
   }
 
-  // حذف شماره
+
   async function removeNumber(phone) {
     try {
-      await api.delete(`${API_URL}/${encodeURIComponent(phone)}`);
+      await api.delete(`/blacklist/${phone}`);
       fetchNumbers();
     } catch (err) {
       setError("Fehler beim Entfernen");
