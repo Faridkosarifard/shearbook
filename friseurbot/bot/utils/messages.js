@@ -2,12 +2,11 @@ const logger = require("./logger");
 const { getSetting, fetchAllSettings } = require("../utils/settingsHelper");
 
 const DEFAULT_HELP_MESSAGE =
-  `❓ Ich habe Ihre Nachricht nicht verstanden.\n\n` +
-  `Sie können folgende Befehle verwenden:\n\n` +
-  `✅ *neu* – Neues Termin starten\n` +
-  `🛑 *abbrechen*, *stop*, *beenden* – Sitzung beenden\n` +
-  `❌ *stornieren <Reservierungsnummer>* – Termin absagen\n` +
-  `🔁 *ändern <Reservierungsnummer>* – Termin ändern\n`;
+  `👋 Willkommen bei Your Salon! So können Sie mich nutzen:\n\n` +
+  `• Schreib "termin", um eine neue Buchung zu starten.\n` +
+  `• Schreib "absagen", um mit einem Code einen Termin zu stornieren.\n` +
+  `• Schreib "ändern", um mit einem Code einen Termin zu verschieben.\n\n` +
+  `Du kannst jederzeit "abbrechen" schreiben, um den Vorgang zu beenden.`;
 
 async function getHelpMessage() {
   try {
@@ -20,7 +19,7 @@ async function getHelpMessage() {
 
 async function refreshHelpMessage() {
   try {
-    await fetchAllSettings(); // کش را تازه کن
+    await fetchAllSettings();
   } catch (e) {
     logger.warn("refreshHelpMessage: fetchAllSettings failed:", e?.message || e);
   }

@@ -70,6 +70,7 @@ export default function SettingsPage() {
     "booking_text",
     "cancel_text",
     "reminder_text",
+    "help_message",
   ];
   const group3 = [
     "business_hours_start",

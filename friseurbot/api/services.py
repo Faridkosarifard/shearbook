@@ -188,7 +188,7 @@ def reorder_service(service_id: int):
         - Admin UI only
     """
     data = request.get_json(silent=True) or {}
-    direction = data.get("direction")  # ✅ fixed (was duration_min by mistake)
+    direction = data.get("direction")
 
     if direction not in ("up", "down"):
         return jsonify({"status": "error", "message": "Invalid direction"}), 400

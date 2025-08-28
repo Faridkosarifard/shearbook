@@ -44,7 +44,7 @@ async function handleCancelCommand(client, chatId, messageRaw) {
     await sessions.set(chatId, session);
     await client.sendMessage(
       chatId,
-      "Bitte sende deinen Reservierungscode zum Stornieren (z. B. ABC123).",
+      "Bitte schreiben Sie Ihre Reservierungsnummer. (z. B. KR-123-1234)",
     );
     return;
   }
@@ -66,20 +66,32 @@ async function handleCancelCommand(client, chatId, messageRaw) {
  * On "nein": aborts and clears session.
  */
 async function confirmCancel(client, chatId, message) {
-  const reply = (message || "").trim().toLowerCase();
+  const replyRaw = (message || "").trim().toUpperCase();
+  const reply = replyRaw.toLowerCase();
   const session = (await sessions.get(chatId)) || {};
-  const code = session.cancel_code;
+  let code = session.cancel_code;
 
   if (!code) {
-    // No code yet; ask the user to provide one.
+    // If user didn't answer with yes/no, treat their message as the code
+    if (!["ja", "yes", "y", "nein", "no", "n"].includes(reply) && replyRaw) {
+      session.cancel_code = replyRaw; // keep original formatting for code
+      await sessions.set(chatId, session);
+      await client.sendMessage(
+        chatId,
+        `Möchtest du die Reservierung mit Code *${replyRaw}* wirklich stornieren? (antworte mit "ja" oder "nein")`,
+      );
+      return;
+    }
+
+    // Otherwise, still missing a code → ask for it again
     await client.sendMessage(
       chatId,
       "Kein Reservierungscode gefunden. Bitte sende deinen Code (z. B. ABC123).",
     );
-    // Keep step as confirm_cancel until we have a code
     return;
   }
 
+  // Now we have a code in session:
   if (["nein", "no", "n"].includes(reply)) {
     await client.sendMessage(chatId, "Stornierung abgebrochen.");
     await sessions.clear(chatId);

@@ -39,6 +39,25 @@ DAY_NAME_TO_NUM = {
     "sun": 6,
 }
 
+
+# --- Public Holidays (DE-BW) ---
+try:
+    import holidays
+    _HAS_HOLIDAYS = True
+except Exception:
+    holidays = None
+    _HAS_HOLIDAYS = False
+
+def _is_public_holiday(d: date_cls) -> bool:
+    """Return True if the date is a public holiday in Baden-Württemberg (DE-BW)."""
+    if not _HAS_HOLIDAYS:
+        return False
+    try:
+        de_bw = holidays.country_holidays("DE", prov="BW", years=d.year)
+        return d in de_bw
+    except Exception:
+        return False
+
 # ---------------- Helpers: settings / times ----------------
 
 
@@ -343,6 +362,10 @@ def get_free_slots(
     if _is_day_off(d):
         return []
 
+    # Public holiday in Baden-Württemberg => closed for everyone
+    if _is_public_holiday(d):
+        return []
+
     # Resolve calendar id from stylist if needed
     if friseur_id and not calendar_id:
         session = db_manager.get_session()
@@ -432,3 +455,170 @@ def create_calendar_for_friseur(friseur_name: str) -> str:
     }
     created = service.calendars().insert(body=calendar).execute()
     return created["id"]
+
+
+# ---------------- Main: free slots (with meta reason) ----------------
+
+def get_free_slots_with_meta(
+    date_str: str,
+    duration_min: int,
+    calendar_id: Optional[str],
+    friseur_id: Optional[int] = None,
+):
+    """
+    Compute available appointment slots for a given date and duration and return both
+    the slots and a machine-readable reason describing the outcome.
+
+    Parameters
+    ----------
+    date_str : str
+        Target date (ISO 'YYYY-MM-DD' or any parseable date string).
+    duration_min : int
+        Appointment duration in minutes (must be a positive integer).
+    calendar_id : Optional[str]
+        Google Calendar ID to query. If missing and `friseur_id` is provided, the
+        function will attempt to resolve the calendar from the database.
+    friseur_id : Optional[int]
+        Numeric stylist ID. When provided, personal schedule (weekly template and
+        exceptions) is applied. If omitted, global business hours are used.
+
+    Returns
+    -------
+    Tuple[List[str], str]
+        A pair of (slots, reason) where `slots` is a sorted list of "HH:MM" strings.
+        `reason` is one of:
+          - 'ok'               → slots exist for the requested date
+          - 'global_day_off'   → globally configured day off (system-wide closure)
+          - 'public_holiday'   → public holiday in Baden-Württemberg (DE-BW)
+          - 'stylist_off'      → stylist has an OFF exception for that date
+          - 'closed_weekly'    → stylist has no weekly working rows for that weekday
+          - 'no_calendar'      → no calendar is associated with the stylist
+          - 'no_windows'       → no workable windows for that date (e.g., fully blocked by CUSTOM)
+          - 'fully_booked'     → working windows exist but all times are occupied by events
+          - 'invalid'          → invalid input (date or duration)
+
+    Notes
+    -----
+    - Timezone is Europe/Berlin; past times for "today" are filtered out.
+    - When `friseur_id` is provided and `calendar_id` is missing, the function
+      resolves `calendar_id` from the database. It also pre-checks OFF/weekly
+      conditions to return a specific `reason` early.
+    """
+    if not isinstance(duration_min, int) or duration_min <= 0:
+        return [], "invalid"
+
+    try:
+        d = parser.parse(date_str).date()
+    except Exception:
+        return [], "invalid"
+
+    # Global (system-wide) day off
+    if _is_day_off(d):
+        return [], "global_day_off"
+    
+    # Public holiday in Baden-Württemberg (DE-BW)
+    if _is_public_holiday(d):
+        return [], "public_holiday"
+
+    # If we have a stylist but no calendar_id, resolve from DB and pre-check OFF/weekly conditions
+    if friseur_id and not calendar_id:
+        session = db_manager.get_session()
+        try:
+            fr = session.get(Friseur, int(friseur_id))
+            if not fr or not fr.calendar_id:
+                return [], "no_calendar"
+
+            # OFF exception?
+            ex_list = (
+                session.query(FriseurException)
+                .filter(
+                    FriseurException.friseur_id == int(friseur_id),
+                    FriseurException.date == d,
+                )
+                .all()
+            )
+            for ex in ex_list:
+                t = getattr(ex, "type", None)
+                tval = t.value if hasattr(t, "value") else t
+                if tval == "OFF":
+                    return [], "stylist_off"
+
+            # Weekly rows present for this weekday?
+            weekday = d.weekday()
+            weekly = (
+                session.query(FriseurWeeklyHour)
+                .filter(
+                    FriseurWeeklyHour.friseur_id == int(friseur_id),
+                    FriseurWeeklyHour.weekday == weekday,
+                )
+                .all()
+            )
+            if not weekly:
+                return [], "closed_weekly"
+
+            calendar_id = fr.calendar_id
+        finally:
+            db_manager.close()
+
+    if not calendar_id:
+        return [], "no_calendar"
+
+    # Build working windows (personal schedule if stylist provided; otherwise global business hours)
+    if friseur_id:
+        windows = _get_personal_windows(d, int(friseur_id))
+    else:
+        windows = [_clip_to_business_hours(d)]
+
+    if not windows:
+        return [], "no_windows"
+
+    # Query Google Calendar busy intervals and build free windows
+    service = get_calendar_service()
+    busy_all: List[Tuple[datetime, datetime]] = []
+    for w_start, w_end in windows:
+        res = (
+            service.events()
+            .list(
+                calendarId=calendar_id,
+                timeMin=w_start.isoformat(),
+                timeMax=w_end.isoformat(),
+                singleEvents=True,
+                orderBy="startTime",
+                timeZone="Europe/Berlin",
+            )
+            .execute()
+        )
+        items = res.get("items", [])
+        for it in items:
+            es, ee = _event_interval(it)
+            clip = _clip_interval(es, ee, w_start, w_end)
+            if clip:
+                busy_all.append(clip)
+
+    busy_merged = _merge_intervals(busy_all)
+
+    free_windows: List[Tuple[datetime, datetime]] = []
+    for w_start, w_end in windows:
+        relevant = []
+        for bs, be in busy_merged:
+            clip = _clip_interval(bs, be, w_start, w_end)
+            if clip:
+                relevant.append(clip)
+        relevant = _merge_intervals(relevant)
+        free_windows.extend(_subtract_busy_from_window(w_start, w_end, relevant))
+
+    # Generate slots at step = duration_min
+    slots = _gen_slots(free_windows, duration_min)
+
+    # Filter out past times if the requested date is today
+    now_berlin = datetime.now(BERLIN_TZ)
+    if d == now_berlin.date():
+        def _to_dt(hhmm: str) -> datetime:
+            h, m = map(int, hhmm.split(":"))
+            return BERLIN_TZ.localize(datetime.combine(d, time(h, m)))
+        slots = [s for s in slots if _to_dt(s) >= now_berlin]
+
+    # Unique + sorted
+    slots = sorted(list(dict.fromkeys(slots)))
+    return (slots, "ok" if slots else "fully_booked")
+
