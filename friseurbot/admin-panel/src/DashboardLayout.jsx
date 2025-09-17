@@ -33,6 +33,7 @@ export default function DashboardLayout({ username, onLogout, setActivePage, chi
     { id: "arbeitszeiten", label: "Arbeitszeiten" },
     { id: "blacklist", label: "Blacklist" },
     { id: "benutzer", label: "Benutzer" },
+    { id: "whatsapp", label: "Whatsapp Einstellung"},
   ];
 
   const active = localStorage.getItem("activePage");
