@@ -10,6 +10,7 @@ import ServiceManagement from "./ServiceManagement";
 import FriseurManagement from "./FriseurManagement";
 import BlacklistManagement from "./BlacklistManagement";
 import FriseurSchedulePage from "./FriseurSchedule";
+import WhatsAppAdminPage from "./WhatsAppAdmin";
 
 type PageId =
   | "dashboard"
@@ -19,7 +20,8 @@ type PageId =
   | "friseur"
   | "blacklist"
   | "benutzer"
-  | "arbeitszeiten";
+  | "arbeitszeiten"
+  | "whatsapp";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
@@ -79,6 +81,7 @@ function App() {
       {activePage === "friseur" && <FriseurManagement />}
       {activePage === "arbeitszeiten" && <FriseurSchedulePage />}
       {activePage === "blacklist" && <BlacklistManagement />}
+      {activePage === "whatsapp" && <WhatsAppAdminPage />}
     </DashboardLayout>
   );
 }

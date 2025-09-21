@@ -4,11 +4,11 @@
  * - Uses a central axios client with BACKEND_URL and X-Bot-Token header.
  * - Reads shared APIs (services, blacklist) secured by Bot header.
  * - Keeps session flow as-is; session endpoints should also use the same axios client.
+ * - Adds admin HTTP server so QR/status are visible in the UI.
  */
 
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const { getHelpMessage } = require("./utils/messages");
-const qrcode = require("qrcode-terminal");
 const api = require("./utils/backend");
 
 const cancelHandler = require("./handlers/cancelHandler");
@@ -17,18 +17,26 @@ const bookingHandler = require("./handlers/bookingHandler");
 const friseurHandler = require("./handlers/friseurHandler");
 const logger = require("./utils/logger");
 const sessions = require("./sessions");
+const { startAdminServer } = require("./adminServer");
 
-// ---- WhatsApp Client init ----
+// ---- WhatsApp Client init (same as before; only 2 stable options added) ----
 const client = new Client({
   authStrategy: new LocalAuth(),
+  restartOnAuthFail: true, // self-recover on auth hiccups
+  webVersionCache: {
+    type: "remote",
+    remotePath: "https://raw.githubusercontent.com/wwebjs/wa-version/main/html/latest.html",
+  },
+});
+
+// ---- Admin server for UI (QR/status/SSE/restart/logout) ----
+startAdminServer(client, logger, {
+  port: process.env.ADMIN_PORT || 5001,
+  token: process.env.ADMIN_TOKEN || "",
+  cors: process.env.ADMIN_CORS || "*",
 });
 
 let services = {};
-
-// Render QR code in terminal
-client.on("qr", (qr) => {
-  qrcode.generate(qr, { small: true });
-});
 
 // Load services from backend (used by booking flow)
 async function loadServices() {
@@ -36,18 +44,10 @@ async function loadServices() {
     const res = await api.get("/services");
     const next = {};
     res.data.forEach((service) => {
-      next[service.id] = {
-        id: service.id,
-        name: service.name,
-        duration: service.duration,
-      };
+      next[service.id] = { id: service.id, name: service.name, duration: service.duration };
     });
     services = next;
-    logger.info(
-      `Services loaded: ${Object.values(services)
-        .map((s) => s.name)
-        .join(", ")}`,
-    );
+    logger.info(`Services loaded: ${Object.values(services).map((s) => s.name).join(", ")}`);
   } catch (e) {
     logger.error("Error loading services:", e?.response?.data || e.message);
   }
@@ -96,10 +96,7 @@ client.on("message", async (msg) => {
   if (["termin"].includes(message)) {
     await sessions.clear(chatId);
 
-    if (Object.keys(services).length === 0) {
-      // Services not loaded yet or failed: try once more
-      await loadServices();
-    }
+    if (Object.keys(services).length === 0) await loadServices();
     if (Object.keys(services).length === 0) {
       await client.sendMessage(
         chatId,
@@ -109,9 +106,7 @@ client.on("message", async (msg) => {
     }
 
     let reply = "🔄 Neue Sitzung gestartet.\n\nBitte wählen Sie eine Dienstleistung:\n";
-    Object.entries(services).forEach(([id, s]) => {
-      reply += `${id}. ${s.name}\n`;
-    });
+    Object.entries(services).forEach(([id, s]) => { reply += `${id}. ${s.name}\n`; });
 
     await client.sendMessage(chatId, reply + "\nAntworten Sie mit der Nummer.");
     await sessions.set(chatId, { step: "choose_service" });
@@ -134,7 +129,6 @@ client.on("message", async (msg) => {
   const session = await sessions.get(chatId);
 
   if (!session) {
-    // If the user says something without starting a flow
     const help = await getHelpMessage();
     await client.sendMessage(chatId, help);
     return;
@@ -145,39 +139,30 @@ client.on("message", async (msg) => {
       case "confirm_cancel":
         await cancelHandler.confirmCancel(client, chatId, message);
         break;
-
       case "confirm_update":
         await changeHandler.handleConfirmUpdate(client, chatId, message);
         break;
-
       case "enter_new_date":
         await changeHandler.handleNewDate(client, chatId, messageRaw);
         break;
-
       case "enter_new_time":
         await changeHandler.handleNewTime(client, chatId, messageRaw);
         break;
-
       case "choose_service":
         await bookingHandler.handleChooseService(client, chatId, messageRaw, services);
         break;
-
       case "choose_friseur":
         await bookingHandler.handleEnterFriseur(client, chatId, messageRaw);
         break;
-
       case "enter_date":
         await bookingHandler.handleEnterDate(client, chatId, messageRaw);
         break;
-
       case "choose_time":
         await bookingHandler.handleChooseTime(client, chatId, messageRaw);
         break;
-
       case "enter_name":
         await bookingHandler.handleEnterName(client, chatId, messageRaw);
         break;
-
       default:
         const help = await getHelpMessage();
         await client.sendMessage(chatId, help);
