@@ -48,19 +48,28 @@ function normalizeDateInput(s = "") {
 /**
  * Step: user picks a service by sending its number.
  */
-async function handleChooseService(client, chatId, message, services) {
+async function handleChooseService(client, chatId, message, servicesById) {
   const session = (await sessions.get(chatId)) || {};
 
-  if (!services[message]) {
-    logger.warn(`Invalid service selection from ${chatId}: ${message}`);
-    await client.sendMessage(
-      chatId,
-      "❗️ Ungültige Auswahl. Bitte antworten Sie mit einer gültigen Zahl.",
-    );
+  const pos = Number(message);
+  if (!Number.isInteger(pos)) {
+    logger.warn(`Invalid service selection (non-integer) from ${chatId}: ${message}`);
+    await client.sendMessage(chatId, "❗️ Ungültige Auswahl. Bitte antworte mit einer gültigen Zahl.");
     return;
   }
 
-  session.service = services[message];
+  
+  const service = Object.values(servicesById).find(
+    (s) => Number.isFinite(s.position) && Number(s.position) === pos
+  );
+
+  if (!service) {
+    logger.warn(`Invalid service position from ${chatId}: ${pos}`);
+    await client.sendMessage(chatId, "❗️ Keine Dienstleistung mit dieser Nummer gefunden. Bitte prüfe die Liste.");
+    return;
+  }
+
+  session.service = service;
   session.step = "enter_date";
   await sessions.set(chatId, session);
 

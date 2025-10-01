@@ -57,7 +57,7 @@ async function handleEnterFriseur(client, chatId, message) {
 
     let antwort =
       `✅ Friseur *${selected.name}* wurde ausgewählt.\n\n` +
-      `Bitte wählen Sie ein Datum oder geben Sie ein eigenes ein (YYYY-MM-DD):\n`;
+      `Bitte wähle ein Datum \n${'🔴 *oder gib ein eigenes ein (YYYY-MM-DD)*🔴'}:\n`;
     session.suggested_dates.forEach((d, i) => {
       antwort += `${i + 1}. ${d}\n`;
     });

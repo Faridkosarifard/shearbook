@@ -5,7 +5,6 @@ import "react-big-calendar/lib/css/react-big-calendar.css";
 import { format, parse, startOfWeek, getDay, isValid as isValidDate } from "date-fns";
 import de from "date-fns/locale/de";
 import api from "./api";
-import axios from "axios";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import AddAppointmentModal from "./AddAppointmentModal";
@@ -69,10 +68,15 @@ export default function TerminListe() {
   const [filteredEvents, setFilteredEvents] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedEvent, setSelectedEvent] = useState(null);
+
+  // Edit state
   const [editMode, setEditMode] = useState(false);
   const [editDate, setEditDate] = useState(new Date());
   const [editTime, setEditTime] = useState("09:00");
   const [freeTimes, setFreeTimes] = useState([]);
+  const [deleting, setDeleting] = useState(false);
+
+  // Add modal
   const [showAddModal, setShowAddModal] = useState(false);
 
   // Stylists & filters
@@ -84,6 +88,18 @@ export default function TerminListe() {
   const [loadError, setLoadError] = useState("");
 
   const calendarRef = useRef(null);
+
+  // ESC to close modal / edit
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        if (editMode) setEditMode(false);
+        else if (selectedEvent) setSelectedEvent(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editMode, selectedEvent]);
 
   const loadFriseure = async () => {
     try {
@@ -138,9 +154,7 @@ export default function TerminListe() {
     try {
       let res = await api.get("/appointments");
       const all = mapAppointments(res.data);
-      console.log("[UI] loaded appointments:", all.length);
-
-      // server-side filter optional; for now client-side
+      // filter client-side by friseur
       let base = all;
       if (friseurId !== "all") {
         base = all.filter((e) => `${e.friseur_id}` === `${friseurId}`);
@@ -195,6 +209,7 @@ export default function TerminListe() {
         boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
         cursor: "pointer",
         transition: "transform 0.2s ease",
+        zIndex: 1,
       },
     };
   };
@@ -210,6 +225,7 @@ export default function TerminListe() {
   };
 
   const handleEditStart = async () => {
+    if (!selectedEvent) return;
     setEditDate(selectedEvent.start);
     setEditTime(format(selectedEvent.start, "HH:mm"));
     setEditMode(true);
@@ -218,6 +234,7 @@ export default function TerminListe() {
 
   const handleDateChange = async (date) => {
     setEditDate(date);
+    if (!selectedEvent) return;
     await fetchFreeTimes(date, selectedEvent.duration, selectedEvent.friseur_id);
   };
 
@@ -234,6 +251,39 @@ export default function TerminListe() {
     } catch (err) {
       console.error("Fehler beim Aktualisieren:", err);
       alert("Aktualisierung fehlgeschlagen.");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedEvent) return;
+    const code = selectedEvent.reservation_code;
+    if (!code) {
+      alert("کد رزرو در این رویداد پیدا نشد.");
+      return;
+    }
+    const ok = window.confirm(
+      `نوبت ${selectedEvent.name} («${selectedEvent.service}») حذف شود؟`
+    );
+    if (!ok) return;
+
+    try {
+      setDeleting(true);
+      const res = await api.delete(`/cancel-reservation/${code}`);
+      const msg = res?.data?.message || "انجام شد.";
+      alert(msg);
+      setSelectedEvent(null);
+      await loadAppointments(selectedFriseur);
+    } catch (err) {
+      const data = err?.response?.data;
+      const msg =
+        data?.message ||
+        (err?.response?.status === 404
+          ? "رزرو پیدا نشد (404)."
+          : "حذف انجام نشد.");
+      alert(msg);
+      console.error("Fehler beim Löschen:", err);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -339,6 +389,10 @@ export default function TerminListe() {
             noEventsInRange: "Keine Termine im gewählten Zeitraum.",
           }}
           onSelectEvent={(event) => setSelectedEvent(event)}
+          onDoubleClickEvent={(event) => {
+            setSelectedEvent(event);
+            setTimeout(() => handleEditStart(), 0);
+          }}
           step={15}
           timeslots={2}
           min={new Date(1970, 0, 1, 8, 0, 0)}
@@ -365,11 +419,33 @@ export default function TerminListe() {
                 <p className="mb-1"><span className="font-semibold">Name:</span> {selectedEvent.name}</p>
                 <p className="mb-1"><span className="font-semibold">Service:</span> {selectedEvent.service}</p>
                 <p className="mb-1"><span className="font-semibold">Friseur:</span> {selectedEvent.friseur_name || selectedEvent.friseur_id}</p>
-                <p className="mb-4"><span className="font-semibold">Zeit:</span> {format(selectedEvent.start, "HH:mm")} – {format(selectedEvent.end, "HH:mm")}</p>
+                <p className="mb-2"><span className="font-semibold">Zeit:</span> {format(selectedEvent.start, "HH:mm")} – {format(selectedEvent.end, "HH:mm")}</p>
+                <p className="mb-4 text-xs text-gray-500">Code: {selectedEvent.reservation_code}</p>
+
                 <div className="flex justify-end flex-wrap gap-2">
-                  <button onClick={() => setSelectedEvent(null)} className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400 transition">Schließen</button>
-                  <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">❌ Löschen</button>
-                  <button onClick={handleEditStart} className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 transition">📝 Bearbeiten</button>
+                  <button
+                    onClick={() => setSelectedEvent(null)}
+                    className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400 transition"
+                  >
+                    Schließen
+                  </button>
+
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className={`px-4 py-2 text-white rounded transition ${
+                      deleting ? "bg-red-400 cursor-not-allowed" : "bg-red-600 hover:bg-red-700"
+                    }`}
+                  >
+                    {deleting ? "در حال حذف…" : "❌ Löschen"}
+                  </button>
+
+                  <button
+                    onClick={handleEditStart}
+                    className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 transition"
+                  >
+                    📝 Bearbeiten
+                  </button>
                 </div>
               </>
             ) : (
@@ -386,13 +462,29 @@ export default function TerminListe() {
                 </div>
                 <div className="mb-6">
                   <label className="block text-sm mb-1 font-semibold">🕒 Neue Uhrzeit</label>
-                  <select value={editTime} onChange={(e) => setEditTime(e.target.value)} className="w-full border px-3 py-2 rounded">
-                    {freeTimes.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+                  <select
+                    value={editTime}
+                    onChange={(e) => setEditTime(e.target.value)}
+                    className="w-full border px-3 py-2 rounded"
+                  >
+                    {freeTimes.map((slot) => (
+                      <option key={slot} value={slot}>{slot}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="flex justify-end flex-wrap gap-2">
-                  <button onClick={() => setEditMode(false)} className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400 transition">Abbrechen</button>
-                  <button onClick={handleEditSubmit} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">Speichern</button>
+                  <button
+                    onClick={() => setEditMode(false)}
+                    className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400 transition"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    onClick={handleEditSubmit}
+                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
+                  >
+                    Speichern
+                  </button>
                 </div>
               </>
             )}

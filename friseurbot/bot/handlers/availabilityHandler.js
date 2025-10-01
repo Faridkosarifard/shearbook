@@ -62,30 +62,45 @@ async function suggestNextDatesOnly(
   startDateISO,
   duration,
   friseur_id,
-  { maxDaysToCheck = 30, maxSuggestions = 3 } = {},
+  { maxDaysToCheck = 30, maxSuggestions = 3, includeToday = true } = {},
 ) {
   const out = [];
-  const seen = new Set();
+  const base = dayjs(startDateISO || undefined); 
+  const nowHHmm = base.format("HH:mm")
 
-  // strictly scan from "tomorrow" relative to the given start date
-  for (let offset = 1; offset <= maxDaysToCheck; offset++) {
-    const d = dayjs(startDateISO).add(offset, "day").format("YYYY-MM-DD");
-    if (seen.has(d)) continue;
+  for (let offset = (includeToday ? 0 : 1); offset <= maxDaysToCheck; offset++) {
+    const dObj = base.add(offset, "day");
+    const d = dObj.format("YYYY-MM-DD");
 
     try {
-      const slots = await getFreeTimes({ date: d, duration, friseur_id });
+      let slots = await getFreeTimes({ date: d, duration, friseur_id });
+
+      if (!Array.isArray(slots) || slots.length === 0) {
+        let msg =
+          "Für das ausgewählte Datum sind leider keine freien Uhrzeiten verfügbar.\n" +
+          "Bitte wähle ein anderes Datum."
+        ;
+        session.step = "enter_date";
+        await sessions.set(chatId, session);
+        await client.sendMessage(chatId, msg);
+      }
+      
+      if (offset === 0 && Array.isArray(slots)) {
+        slots = slots.filter(t => t > nowHHmm);
+      }
+
       if (Array.isArray(slots) && slots.length > 0) {
         out.push({ date: d });
-        seen.add(d);
         if (out.length >= maxSuggestions) break;
       }
     } catch {
-      // ignore HTTP/logic errors and keep scanning forward
+      // ignore
     }
   }
 
   return out;
 }
+
 
 /**
  * Render only dates (no time preview) to the user.
@@ -100,7 +115,7 @@ async function promptDatesOnly(client, chatId, session, stylistName, dateItems /
 
   let msg =
     `✅ Friseur *${stylistName}* wurde ausgewählt.\n\n` +
-    `Bitte wähle ein Datum oder gib ein eigenes ein (YYYY-MM-DD):\n`;
+    `Bitte wähle ein Datum \n${'🔴 *oder gib ein eigenes ein (YYYY-MM-DD)*🔴'}:\n`;
 
   dateItems.forEach((d, i) => {
     msg += `${i + 1}. ${d.date}\n`;

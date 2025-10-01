@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import date as date_cls
 from datetime import datetime, time, timedelta
+from functools import lru_cache
 from typing import List, Optional, Tuple
 
 import pytz
@@ -15,54 +16,34 @@ from friseurbot.utils.db.manager import db_manager
 
 # ---- Constants / Defaults ----
 BERLIN_TZ = pytz.timezone("Europe/Berlin")
-DEFAULT_START = time(9, 0)  # 09:00
-DEFAULT_END = time(18, 0)  # 18:00
+DEFAULT_START = time(9, 0)   # 09:00
+DEFAULT_END = time(18, 0)    # 18:00
+SLOT_STEP_MIN = 30           # show candidate starts every 30 minutes
 
 # Human day names → weekday numbers (Mon=0..Sun=6)
 DAY_NAME_TO_NUM = {
-    "monday": 0,
-    "mon": 0,
-    "tuesday": 1,
-    "tue": 1,
-    "tues": 1,
-    "wednesday": 2,
-    "wed": 2,
-    "thursday": 3,
-    "thu": 3,
-    "thur": 3,
-    "thurs": 3,
-    "friday": 4,
-    "fri": 4,
-    "saturday": 5,
-    "sat": 5,
-    "sunday": 6,
-    "sun": 6,
+    "monday": 0, "mon": 0,
+    "tuesday": 1, "tue": 1, "tues": 1,
+    "wednesday": 2, "wed": 2,
+    "thursday": 3, "thu": 3, "thur": 3, "thurs": 3,
+    "friday": 4, "fri": 4,
+    "saturday": 5, "sat": 5,
+    "sunday": 6, "sun": 6,
 }
-
 
 # --- Public Holidays (DE-BW) ---
 try:
     import holidays
     _HAS_HOLIDAYS = True
 except Exception:
-    holidays = None
+    holidays = None  # type: ignore
     _HAS_HOLIDAYS = False
 
-def _is_public_holiday(d: date_cls) -> bool:
-    """Return True if the date is a public holiday in Baden-Württemberg (DE-BW)."""
-    if not _HAS_HOLIDAYS:
-        return False
-    try:
-        de_bw = holidays.country_holidays("DE", prov="BW", years=d.year)
-        return d in de_bw
-    except Exception:
-        return False
 
 # ---------------- Helpers: settings / times ----------------
 
-
 def _parse_time_or_default(value: Optional[str], default: time) -> time:
-    """Parse a 'HH:MM' string. Returns `default` if value is None or invalid."""
+    """Parse 'HH:MM' string, falling back to default on invalid/missing."""
     if not value:
         return default
     try:
@@ -71,40 +52,83 @@ def _parse_time_or_default(value: Optional[str], default: time) -> time:
         return default
 
 
+@lru_cache(maxsize=1)
+def _cached_days_off() -> set[int]:
+    """Return a set of weekday numbers (0=Mon..6=Sun) globally configured as days off."""
+    days_str = (get_setting("days_off") or "").strip()
+    if not days_str:
+        return set()
+    names = [s.strip().lower() for s in days_str.split(",") if s.strip()]
+    return {DAY_NAME_TO_NUM[n] for n in names if DAY_NAME_TO_NUM.get(n) is not None}
+
+
 def _is_day_off(d: date_cls) -> bool:
     """
-    Return True if the given date is listed in `days_off` setting.
-    This represents a **global day off** (system-wide closure).
+    Return True if the given date is listed in global `days_off` setting.
+    This represents a system-wide closure, independent of stylists.
     """
-    days_str = get_setting("days_off") or ""
-    if not days_str.strip():
-        return False
-    names = [s.strip().lower() for s in days_str.split(",") if s.strip()]
-    daynums = {
-        DAY_NAME_TO_NUM.get(n) for n in names if DAY_NAME_TO_NUM.get(n) is not None
-    }
-    return d.weekday() in daynums
+    return d.weekday() in _cached_days_off()
+
+
+@lru_cache(maxsize=64)
+def _cached_business_hours(year: int) -> Tuple[time, time]:
+    """Cache global business hours per year to avoid repeated setting lookups."""
+    start_cfg = get_setting("business_hours_start")
+    end_cfg = get_setting("business_hours_end")
+    return (
+        _parse_time_or_default(start_cfg, DEFAULT_START),
+        _parse_time_or_default(end_cfg, DEFAULT_END),
+    )
 
 
 def _clip_to_business_hours(d: date_cls) -> Tuple[datetime, datetime]:
     """
-    Return business hour window for the given date based on global settings.
-    Falls back to 09:00–18:00 if settings are invalid.
+    Return business hour window for the date based on global settings.
+    Falls back to 09:00–18:00 if misconfigured.
     """
-    start_cfg = get_setting("business_hours_start")
-    end_cfg = get_setting("business_hours_end")
-    start_t = _parse_time_or_default(start_cfg, DEFAULT_START)
-    end_t = _parse_time_or_default(end_cfg, DEFAULT_END)
+    start_t, end_t = _cached_business_hours(d.year)
     start_dt = BERLIN_TZ.localize(datetime.combine(d, start_t))
     end_dt = BERLIN_TZ.localize(datetime.combine(d, end_t))
     if end_dt <= start_dt:
-        # Fallback to defaults if misconfigured
         start_dt = BERLIN_TZ.localize(datetime.combine(d, DEFAULT_START))
         end_dt = BERLIN_TZ.localize(datetime.combine(d, DEFAULT_END))
     return start_dt, end_dt
 
 
+@lru_cache(maxsize=8)
+def _holiday_calendar(year: int):
+    """Cache holiday calendar object for Baden-Württemberg per year."""
+    if not _HAS_HOLIDAYS:
+        return None
+    try:
+        return holidays.country_holidays("DE", prov="BW", years=year)  # type: ignore
+    except Exception:
+        return None
+
+
+def _is_public_holiday(d: date_cls) -> bool:
+    """Return True if date is a public holiday in Baden-Württemberg (DE-BW)."""
+    cal = _holiday_calendar(d.year)
+    return bool(cal and d in cal)
+
+
 # ---------------- Helpers: interval algebra ----------------
+
+def _merge_intervals(
+    intervals: List[Tuple[datetime, datetime]],
+) -> List[Tuple[datetime, datetime]]:
+    """Merge overlapping intervals into continuous blocks."""
+    xs = sorted([(a, b) for a, b in intervals if a < b], key=lambda x: x[0])
+    if not xs:
+        return []
+    out = [xs[0]]
+    for s, e in xs[1:]:
+        ls, le = out[-1]
+        if s <= le:
+            out[-1] = (ls, max(le, e))
+        else:
+            out.append((s, e))
+    return out
 
 
 def _subtract_blocks(
@@ -112,7 +136,7 @@ def _subtract_blocks(
     blocks: List[Tuple[datetime, datetime]],
 ) -> List[Tuple[datetime, datetime]]:
     """
-    Subtract `blocks` (closed intervals) from working `windows` and return the remaining open windows.
+    Subtract `blocks` (closed intervals) from working `windows` and return remaining open windows.
     Intervals are tz-aware and assumed valid (start < end).
     """
     if not windows or not blocks:
@@ -147,7 +171,93 @@ def _subtract_blocks(
     return merged
 
 
+def _clip_interval(
+    a: datetime, b: datetime, w_start: datetime, w_end: datetime
+) -> Optional[Tuple[datetime, datetime]]:
+    """Clip interval (a,b) to within (w_start,w_end)."""
+    s = max(a, w_start)
+    e = min(b, w_end)
+    return (s, e) if s < e else None
+
+
+def _subtract_busy_from_window(
+    w_start: datetime, w_end: datetime, busy: List[Tuple[datetime, datetime]]
+) -> List[Tuple[datetime, datetime]]:
+    """
+    Subtract busy intervals from a working window and return free sub-windows.
+    Busy intervals must be merged beforehand.
+    """
+    free: List[Tuple[datetime, datetime]] = []
+    cur = w_start
+    for bs, be in busy:
+        if be <= cur:
+            continue
+        if bs >= w_end:
+            break
+        if bs > cur:
+            free.append((cur, min(bs, w_end)))
+        cur = max(cur, be)
+        if cur >= w_end:
+            break
+    if cur < w_end:
+        free.append((cur, w_end))
+    return [iv for iv in free if iv[0] < iv[1]]
+
+
+def _ceil_to_step(dt: datetime, step_min: int) -> datetime:
+    """Round dt up to the next step_min grid."""
+    minutes = dt.hour * 60 + dt.minute
+    rem = minutes % step_min
+    if rem == 0 and dt.second == 0 and dt.microsecond == 0:
+        return dt.replace(second=0, microsecond=0)
+    add = step_min - rem
+    return (dt + timedelta(minutes=add)).replace(second=0, microsecond=0)
+
+
+def _gen_slots(
+    free_intervals: List[Tuple[datetime, datetime]],
+    duration_min: int,
+    slot_step_min: Optional[int] = SLOT_STEP_MIN,
+    buffer_before_min: int = 0,
+    buffer_after_min: int = 0,
+) -> List[str]:
+    """
+    Generate start times on a fixed grid (default: every 30 minutes),
+    but only include starts where the *full* duration (plus optional buffers)
+    fits entirely inside a single free interval.
+
+    Examples
+    --------
+    - Working hours 09:00–17:00
+    - Busy at 10:00–10:30
+    - Service duration 90 minutes
+      → 09:00 is NOT offered, because 09:00–10:30 crosses a busy block.
+      → 09:30 is NOT offered for the same reason.
+      → 10:30 may be offered if 10:30–12:00 is free, etc.
+    """
+    dur = timedelta(minutes=duration_min + buffer_before_min + buffer_after_min)
+    step = timedelta(minutes=slot_step_min)
+
+    out: List[str] = []
+    for fs, fe in free_intervals:
+        # Apply buffers to both ends
+        start = fs + timedelta(minutes=buffer_before_min)
+        end = fe - timedelta(minutes=buffer_after_min)
+        if end <= start:
+            continue
+
+        t = _ceil_to_step(start.replace(second=0, microsecond=0), int(step.total_seconds() // 60))
+        while t + dur <= end:                 # entire duration must fit in the SAME free interval
+            out.append(t.strftime("%H:%M"))   # result aligned to the half-hour grid
+            t += step
+    return out
+
+
 # ---------------- Helpers: personal schedule ----------------
+
+def _merge_windows(windows: List[Tuple[datetime, datetime]]) -> List[Tuple[datetime, datetime]]:
+    """Merge overlapping windows; assumes all on the same day & tz-aware."""
+    return _merge_intervals(windows)
 
 
 def _get_personal_windows(
@@ -194,20 +304,24 @@ def _get_personal_windows(
             # No weekly rows → closed (even if CUSTOM blocks exist, nothing to subtract from)
             return []
 
-        base_windows = [
-            (
-                BERLIN_TZ.localize(datetime.combine(d, w.start_time)),
-                BERLIN_TZ.localize(datetime.combine(d, w.end_time)),
-            )
-            for w in weekly
-        ]
+        base_windows = []
+        for w in weekly:
+            if w.end_time and w.start_time and w.end_time > w.start_time:
+                base_windows.append(
+                    (
+                        BERLIN_TZ.localize(datetime.combine(d, w.start_time)),
+                        BERLIN_TZ.localize(datetime.combine(d, w.end_time)),
+                    )
+                )
+
+        base_windows = _merge_windows(base_windows)
 
         # Collect CUSTOM blocks (closed intervals) to subtract
         custom_blocks: List[Tuple[datetime, datetime]] = []
         for ex in ex_list:
             t = getattr(ex, "type", None)
             tval = t.value if hasattr(t, "value") else t
-            if tval == "CUSTOM" and ex.start_time and ex.end_time:
+            if tval == "CUSTOM" and ex.start_time and ex.end_time and ex.end_time > ex.start_time:
                 custom_blocks.append(
                     (
                         BERLIN_TZ.localize(datetime.combine(d, ex.start_time)),
@@ -216,7 +330,7 @@ def _get_personal_windows(
                 )
 
         return (
-            _subtract_blocks(base_windows, custom_blocks)
+            _merge_windows(_subtract_blocks(base_windows, custom_blocks))
             if custom_blocks
             else base_windows
         )
@@ -225,7 +339,6 @@ def _get_personal_windows(
 
 
 # ---------------- Helpers: events / intervals ----------------
-
 
 def _dt_from_google(v: dict) -> datetime:
     """
@@ -259,76 +372,40 @@ def _event_interval(item: dict) -> Tuple[datetime, datetime]:
     return s, e
 
 
-def _merge_intervals(
-    intervals: List[Tuple[datetime, datetime]],
+def _fetch_busy_intervals_freebusy(
+    calendar_id: str, windows: List[Tuple[datetime, datetime]]
 ) -> List[Tuple[datetime, datetime]]:
-    """Merge overlapping intervals into continuous blocks."""
-    xs = sorted([(a, b) for a, b in intervals if a < b], key=lambda x: x[0])
-    if not xs:
+    """
+    Use Google Calendar FreeBusy API to fetch busy intervals covering the union window.
+    Returns merged busy intervals (tz-aware, Europe/Berlin).
+    """
+    if not windows:
         return []
-    out = [xs[0]]
-    for s, e in xs[1:]:
-        ls, le = out[-1]
-        if s <= le:
-            out[-1] = (ls, max(le, e))
-        else:
-            out.append((s, e))
-    return out
 
+    union_start = min(w[0] for w in windows)
+    union_end = max(w[1] for w in windows)
 
-def _clip_interval(
-    a: datetime, b: datetime, w_start: datetime, w_end: datetime
-) -> Optional[Tuple[datetime, datetime]]:
-    """Clip interval (a,b) to within (w_start,w_end)."""
-    s = max(a, w_start)
-    e = min(b, w_end)
-    return (s, e) if s < e else None
+    service = get_calendar_service()
+    body = {
+        "timeMin": union_start.isoformat(),
+        "timeMax": union_end.isoformat(),
+        "timeZone": "Europe/Berlin",
+        "items": [{"id": calendar_id}],
+    }
+    resp = service.freebusy().query(body=body).execute()
+    cal_busy = resp.get("calendars", {}).get(calendar_id, {}).get("busy", [])
 
+    busy_all: List[Tuple[datetime, datetime]] = []
+    for b in cal_busy:
+        es = parser.parse(b["start"]).astimezone(BERLIN_TZ)
+        ee = parser.parse(b["end"]).astimezone(BERLIN_TZ)
+        if ee > es:
+            busy_all.append((es, ee))
 
-def _subtract_busy_from_window(
-    w_start: datetime, w_end: datetime, busy: List[Tuple[datetime, datetime]]
-) -> List[Tuple[datetime, datetime]]:
-    """
-    Subtract busy intervals from a working window and return free sub-windows.
-    Busy intervals must be merged beforehand.
-    """
-    free: List[Tuple[datetime, datetime]] = []
-    cur = w_start
-    for bs, be in busy:
-        if be <= cur:
-            continue
-        if bs >= w_end:
-            break
-        if bs > cur:
-            free.append((cur, min(bs, w_end)))
-        cur = max(cur, be)
-        if cur >= w_end:
-            break
-    if cur < w_end:
-        free.append((cur, w_end))
-    return [iv for iv in free if iv[0] < iv[1]]
-
-
-def _gen_slots(
-    free_intervals: List[Tuple[datetime, datetime]], duration_min: int
-) -> List[str]:
-    """
-    Generate appointment slots (HH:MM) from free intervals.
-    Slots are created in steps equal to `duration_min`.
-    """
-    dur = timedelta(minutes=duration_min)
-    step = dur
-    out: List[str] = []
-    for fs, fe in free_intervals:
-        t = fs.replace(second=0, microsecond=0)
-        while t + dur <= fe:
-            out.append(t.strftime("%H:%M"))
-            t += step
-    return out
+    return _merge_intervals(busy_all)
 
 
 # ---------------- Main: free slots ----------------
-
 
 def get_free_slots(
     date_str: str,
@@ -337,19 +414,21 @@ def get_free_slots(
     friseur_id: Optional[int] = None,
 ) -> List[str]:
     """
-    Compute free appointment slots for a given date and duration (Europe/Berlin).
+    Compute free appointment slots for a given date and duration (Europe/Berlin),
+    aligned to a fixed half-hour grid, but only if the full duration fits.
 
     Behaviour:
       - Global `days_off` closes the day for everyone.
+      - Public holidays in DE-BW close the day for everyone.
       - For a stylist:
           * OFF exception => closed all day.
           * CUSTOM exceptions => closed blocks to subtract from weekly windows.
           * Weekly rows define base windows.
           * No weekly & no exceptions => closed (no global fallback).
       - For non-stylist (friseur_id=None), use global business hours.
-      - Google Calendar busy events are respected (per-window).
+      - Google Calendar busy events are respected.
       - For today, past start times are filtered out.
-      - Step equals the requested duration (no extra gaps).
+      - Start step is 30 minutes; duration must fully fit inside a free interval.
     """
     if not isinstance(duration_min, int) or duration_min <= 0:
         return []
@@ -389,31 +468,8 @@ def get_free_slots(
     if not windows:
         return []
 
-    # Query Google Calendar busy intervals inside each window
-    service = get_calendar_service()
-    busy_all: List[Tuple[datetime, datetime]] = []
-
-    for w_start, w_end in windows:
-        res = (
-            service.events()
-            .list(
-                calendarId=calendar_id,
-                timeMin=w_start.isoformat(),
-                timeMax=w_end.isoformat(),
-                singleEvents=True,
-                orderBy="startTime",
-                timeZone="Europe/Berlin",
-            )
-            .execute()
-        )
-        items = res.get("items", [])
-        for it in items:
-            es, ee = _event_interval(it)
-            clip = _clip_interval(es, ee, w_start, w_end)
-            if clip:
-                busy_all.append(clip)
-
-    busy_merged = _merge_intervals(busy_all)
+    # Fetch busy intervals with a single FreeBusy request
+    busy_merged = _fetch_busy_intervals_freebusy(calendar_id, windows)
 
     # Subtract busy from each working window
     free_windows: List[Tuple[datetime, datetime]] = []
@@ -426,11 +482,17 @@ def get_free_slots(
         relevant = _merge_intervals(relevant)
         free_windows.extend(_subtract_busy_from_window(w_start, w_end, relevant))
 
-    # Generate slots at `duration_min` step
-    slots = _gen_slots(free_windows, duration_min)
+    # Generate slots on a half-hour grid, ensuring full duration fits
+    slots = _gen_slots(
+        free_windows,
+        duration_min=duration_min,
+        slot_step_min=SLOT_STEP_MIN,
+        buffer_before_min=0,
+        buffer_after_min=0,
+    )
 
-    # If today, drop past ones
-    now_berlin = datetime.now(BERLIN_TZ)
+    # If today, drop past starts
+    now_berlin = datetime.now(BERLIN_TZ).replace(second=0, microsecond=0)
     if d == now_berlin.date():
 
         def _to_dt(hhmm: str) -> datetime:
@@ -444,7 +506,6 @@ def get_free_slots(
 
 
 # ---------------- Utility: create calendar ----------------
-
 
 def create_calendar_for_friseur(friseur_name: str) -> str:
     """Create a new dedicated Google Calendar for a stylist and return its calendarId."""
@@ -467,7 +528,8 @@ def get_free_slots_with_meta(
 ):
     """
     Compute available appointment slots for a given date and duration and return both
-    the slots and a machine-readable reason describing the outcome.
+    the slots and a machine-readable reason describing the outcome. Slots are aligned
+    to a half-hour grid, and only starts that fully fit the service duration are emitted.
 
     Parameters
     ----------
@@ -493,16 +555,14 @@ def get_free_slots_with_meta(
           - 'stylist_off'      → stylist has an OFF exception for that date
           - 'closed_weekly'    → stylist has no weekly working rows for that weekday
           - 'no_calendar'      → no calendar is associated with the stylist
-          - 'no_windows'       → no workable windows for that date (e.g., fully blocked by CUSTOM)
+          - 'no_windows'       → no workable windows for that date
           - 'fully_booked'     → working windows exist but all times are occupied by events
           - 'invalid'          → invalid input (date or duration)
 
     Notes
     -----
     - Timezone is Europe/Berlin; past times for "today" are filtered out.
-    - When `friseur_id` is provided and `calendar_id` is missing, the function
-      resolves `calendar_id` from the database. It also pre-checks OFF/weekly
-      conditions to return a specific `reason` early.
+    - Start step is fixed at 30 minutes, but the full duration must fit.
     """
     if not isinstance(duration_min, int) or duration_min <= 0:
         return [], "invalid"
@@ -515,7 +575,7 @@ def get_free_slots_with_meta(
     # Global (system-wide) day off
     if _is_day_off(d):
         return [], "global_day_off"
-    
+
     # Public holiday in Baden-Württemberg (DE-BW)
     if _is_public_holiday(d):
         return [], "public_holiday"
@@ -572,31 +632,10 @@ def get_free_slots_with_meta(
     if not windows:
         return [], "no_windows"
 
-    # Query Google Calendar busy intervals and build free windows
-    service = get_calendar_service()
-    busy_all: List[Tuple[datetime, datetime]] = []
-    for w_start, w_end in windows:
-        res = (
-            service.events()
-            .list(
-                calendarId=calendar_id,
-                timeMin=w_start.isoformat(),
-                timeMax=w_end.isoformat(),
-                singleEvents=True,
-                orderBy="startTime",
-                timeZone="Europe/Berlin",
-            )
-            .execute()
-        )
-        items = res.get("items", [])
-        for it in items:
-            es, ee = _event_interval(it)
-            clip = _clip_interval(es, ee, w_start, w_end)
-            if clip:
-                busy_all.append(clip)
+    # Query busy intervals once via FreeBusy API
+    busy_merged = _fetch_busy_intervals_freebusy(calendar_id, windows)
 
-    busy_merged = _merge_intervals(busy_all)
-
+    # Build free windows by subtracting busy periods
     free_windows: List[Tuple[datetime, datetime]] = []
     for w_start, w_end in windows:
         relevant = []
@@ -607,18 +646,28 @@ def get_free_slots_with_meta(
         relevant = _merge_intervals(relevant)
         free_windows.extend(_subtract_busy_from_window(w_start, w_end, relevant))
 
-    # Generate slots at step = duration_min
-    slots = _gen_slots(free_windows, duration_min)
+    if not free_windows:
+        return [], "fully_booked"
 
-    # Filter out past times if the requested date is today
-    now_berlin = datetime.now(BERLIN_TZ)
+    # Generate slots on a half-hour grid, ensuring the full duration fits
+    slots = _gen_slots(
+        free_windows,
+        duration_min=duration_min,
+        slot_step_min=SLOT_STEP_MIN,
+        buffer_before_min=0,
+        buffer_after_min=0,
+    )
+
+    # Filter out past starts if the requested date is today
+    now_berlin = datetime.now(BERLIN_TZ).replace(second=0, microsecond=0)
     if d == now_berlin.date():
+
         def _to_dt(hhmm: str) -> datetime:
             h, m = map(int, hhmm.split(":"))
             return BERLIN_TZ.localize(datetime.combine(d, time(h, m)))
+
         slots = [s for s in slots if _to_dt(s) >= now_berlin]
 
     # Unique + sorted
     slots = sorted(list(dict.fromkeys(slots)))
     return (slots, "ok" if slots else "fully_booked")
-

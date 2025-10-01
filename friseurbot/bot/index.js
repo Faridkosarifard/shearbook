@@ -37,17 +37,55 @@ startAdminServer(client, logger, {
 });
 
 let services = {};
+let servicesById   = {};   // id -> service
+let servicesSorted = [];   // array sorted by position, then name
+let posToId        = {};
 
 // Load services from backend (used by booking flow)
 async function loadServices() {
   try {
-    const res = await api.get("/services");
-    const next = {};
-    res.data.forEach((service) => {
-      next[service.id] = { id: service.id, name: service.name, duration: service.duration };
-    });
-    services = next;
-    logger.info(`Services loaded: ${Object.values(services).map((s) => s.name).join(", ")}`);
+    const { data } = await api.get("/services");
+
+    // 1) Normalize
+    const normalized = (data || []).map(s => ({
+      id: String(s.id),
+      name: String(s.name ?? ""),
+      duration: Number(s.duration) || 0,
+      position: Number(s.position) // may be NaN if missing
+    }));
+
+    // 2) Split by valid/invalid position
+    const withPos    = normalized.filter(s => Number.isFinite(s.position));
+    const withoutPos = normalized.filter(s => !Number.isFinite(s.position));
+
+    // 3) Sort: by position, then name (natural)
+    withPos.sort((a, b) =>
+      a.position - b.position ||
+      a.name.localeCompare(b.name, undefined, { numeric: true })
+    );
+
+    // 4) Merge: valid positions first, then the rest (unsorted or name-sorted if you prefer)
+    servicesSorted = [...withPos, ...withoutPos];
+
+    // 5) Build maps
+    servicesById = Object.fromEntries(servicesSorted.map(s => [s.id, s]));
+    services     = servicesById; // keep your original variable for compatibility
+
+    posToId = {};
+    for (const s of withPos) {
+      if (posToId[s.position]) {
+        logger.warn(`Duplicate service.position detected: ${s.position} (overwriting ${posToId[s.position]} with ${s.id})`);
+      }
+      posToId[s.position] = s.id;
+    }
+
+    // 6) Helpful logs
+    const byPosLabel = withPos.map(s => `${s.position}:${s.name}`).join(", ");
+    const noPosLabel = withoutPos.map(s => s.name).join(", ");
+    logger.info(
+      `Services loaded. Ordered: [${byPosLabel}]` +
+      (withoutPos.length ? ` | No position: [${noPosLabel}]` : "")
+    );
   } catch (e) {
     logger.error("Error loading services:", e?.response?.data || e.message);
   }
@@ -106,7 +144,15 @@ client.on("message", async (msg) => {
     }
 
     let reply = "🔄 Neue Sitzung gestartet.\n\nBitte wählen Sie eine Dienstleistung:\n";
-    Object.entries(services).forEach(([id, s]) => { reply += `${id}. ${s.name}\n`; });
+    const servicesByPosition = Object.fromEntries(
+      servicesSorted.map(s => [s.position, s])
+    );
+    
+    Object.entries(servicesByPosition)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .forEach(([position, s]) => {
+        reply += `${position}. ${s.name}\n`;
+      });
 
     await client.sendMessage(chatId, reply + "\nAntworten Sie mit der Nummer.");
     await sessions.set(chatId, { step: "choose_service" });
@@ -149,7 +195,7 @@ client.on("message", async (msg) => {
         await changeHandler.handleNewTime(client, chatId, messageRaw);
         break;
       case "choose_service":
-        await bookingHandler.handleChooseService(client, chatId, messageRaw, services);
+        await bookingHandler.handleChooseService(client, chatId, messageRaw, servicesById);
         break;
       case "choose_friseur":
         await bookingHandler.handleEnterFriseur(client, chatId, messageRaw);
