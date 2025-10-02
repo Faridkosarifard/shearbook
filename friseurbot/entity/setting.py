@@ -1,5 +1,8 @@
-from sqlalchemy import Column, String
+# SQLAlchemy
+from sqlalchemy import Column
+from sqlalchemy import String
 
+# Friseurbot
 from friseurbot.entity.base import Base
 
 

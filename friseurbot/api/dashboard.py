@@ -1,10 +1,18 @@
+# Standard library
 import datetime
 
-from flask import Blueprint, jsonify
+# Third-party (others)
+from flask import Blueprint
+from flask import jsonify
+
+# SQLAlchemy
 from sqlalchemy import func
 
-from friseurbot.entity import Appointment, Service
-from friseurbot.security import require_admin, require_bot_token
+# Friseurbot
+from friseurbot.entity import Appointment
+from friseurbot.entity import Service
+from friseurbot.security import require_admin
+from friseurbot.security import require_bot_token
 from friseurbot.utils.db.manager import db_manager
 
 stats_api = Blueprint("stats_api", __name__)

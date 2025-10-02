@@ -30,6 +30,7 @@ export default function DashboardLayout({ username, onLogout, setActivePage, chi
     { id: "einstellungen", label: "Einstellungen" },
     { id: "services", label: "Services" },
     { id: "friseur", label: "Friseur" },
+    { id: "friseurservices", label: "Friseurdienstleistungen" },
     { id: "arbeitszeiten", label: "Arbeitszeiten" },
     { id: "blacklist", label: "Blacklist" },
     { id: "benutzer", label: "Benutzer" },

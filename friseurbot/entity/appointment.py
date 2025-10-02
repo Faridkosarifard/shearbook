@@ -1,7 +1,14 @@
-from sqlalchemy import Column, Date, ForeignKey, Integer, String, Time
+# SQLAlchemy
+from sqlalchemy import Column
+from sqlalchemy import Date
+from sqlalchemy import ForeignKey
+from sqlalchemy import Integer
+from sqlalchemy import String
+from sqlalchemy import Time
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
+# Friseurbot
 from friseurbot.entity.base import Base
 
 

@@ -1,5 +1,9 @@
-from flask import Blueprint, jsonify, request
+# Third-party (others)
+from flask import Blueprint
+from flask import jsonify
+from flask import request
 
+# Friseurbot
 from friseurbot.entity import Setting
 from friseurbot.security import require_admin  # Only Admin can write
 from friseurbot.security import require_bot_or_admin  # Bot or Admin can read settings

@@ -1,11 +1,15 @@
+# Standard library
 from pathlib import Path
 
+# Third-party (others)
 import typer
 from rich import print
 
+# Friseurbot
 from friseurbot.cli.helpers import run_command
 from friseurbot.utils.db.manager import db_manager
-from friseurbot.utils.db.seed import seed_services, seed_settings
+from friseurbot.utils.db.seed import seed_services
+from friseurbot.utils.db.seed import seed_settings
 
 app = typer.Typer(help="Database management")
 BASE_DIR = Path(__file__).resolve().parents[2]

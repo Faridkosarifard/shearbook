@@ -1,9 +1,14 @@
+# Standard library
 from pathlib import Path
 
+# Third-party (others)
 import typer
 from rich import print
 
-from friseurbot.cli.helpers import run_command, run_in_background, stop_process
+# Friseurbot
+from friseurbot.cli.helpers import run_command
+from friseurbot.cli.helpers import run_in_background
+from friseurbot.cli.helpers import stop_process
 
 app = typer.Typer(help="Whatsapp Bot management")
 BASE_DIR = Path(__file__).resolve().parents[2]

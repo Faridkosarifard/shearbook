@@ -17,13 +17,17 @@ Environment variables:
     COOKIE_MAX_AGE_HOURS : cookie max-age in hours (default: "8")
 """
 
+# Standard library
 import datetime
 import os
 import secrets
 from functools import wraps
 
+# Third-party (others)
 import jwt
-from flask import jsonify, make_response, request
+from flask import jsonify
+from flask import make_response
+from flask import request
 
 # -----------------------------
 # Constants / Configuration

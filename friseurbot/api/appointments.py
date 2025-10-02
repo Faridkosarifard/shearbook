@@ -1,25 +1,28 @@
+# Standard library
 import datetime
 
-from flask import Blueprint, jsonify, request
+# Third-party (others)
+from flask import Blueprint
+from flask import jsonify
+from flask import request
 from googleapiclient.discovery import build
+
+# SQLAlchemy
 from sqlalchemy.orm import joinedload
 
+# Friseurbot
 from friseurbot.entity.appointment import Appointment
 from friseurbot.entity.services import Service
-from friseurbot.security import (
-    has_valid_bot_token,
-    is_admin_cookie_valid,
-    require_admin,
-    require_bot_or_admin,
-    require_csrf,
-)
+from friseurbot.security import has_valid_bot_token
+from friseurbot.security import is_admin_cookie_valid
+from friseurbot.security import require_admin
+from friseurbot.security import require_bot_or_admin
+from friseurbot.security import require_csrf
 from friseurbot.utils.auth_google import get_credentials
-from friseurbot.utils.db.helper import (
-    delete_appointment_by_code,
-    save_appointment,
-    save_customer,
-    update_appointment_by_code,
-)
+from friseurbot.utils.db.helper import delete_appointment_by_code
+from friseurbot.utils.db.helper import save_appointment
+from friseurbot.utils.db.helper import save_customer
+from friseurbot.utils.db.helper import update_appointment_by_code
 from friseurbot.utils.db.manager import db_manager
 from friseurbot.utils.reservation_code import generate_unique_reservation_code
 
@@ -90,7 +93,10 @@ def create_event():
         try:
             start = datetime.datetime.fromisoformat(start_str)
         except Exception:
-            return jsonify({"status": "error", "message": "invalid start datetime"}), 400
+            return (
+                jsonify({"status": "error", "message": "invalid start datetime"}),
+                400,
+            )
 
         duration = service.duration_min
         end = start + datetime.timedelta(minutes=duration)
@@ -104,11 +110,15 @@ def create_event():
             "start": {"dateTime": start.isoformat(), "timeZone": "Europe/Berlin"},
             "end": {"dateTime": end.isoformat(), "timeZone": "Europe/Berlin"},
         }
-        event_created = calendar.events().insert(calendarId=calendar_id, body=event).execute()
+        event_created = (
+            calendar.events().insert(calendarId=calendar_id, body=event).execute()
+        )
         event_id = event_created["id"]
 
         # Generate reservation code and persist to DB
-        reservation_code = generate_unique_reservation_code(prefix="KR", session=session)
+        reservation_code = generate_unique_reservation_code(
+            prefix="KR", session=session
+        )
 
         save_appointment(
             name=name,
@@ -243,7 +253,15 @@ def cancel_reservation(code):
         if success:
             return jsonify({"status": "ok", "message": "Termin wurde storniert."})
         else:
-            return jsonify({"status": "not_found", "message": "Reservierungscode nicht gefunden."}), 404
+            return (
+                jsonify(
+                    {
+                        "status": "not_found",
+                        "message": "Reservierungscode nicht gefunden.",
+                    }
+                ),
+                404,
+            )
     except Exception as e:
         print("error with cancelation:", e)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -281,7 +299,15 @@ def update_reservation(code):
         if success:
             return jsonify({"status": "ok", "message": "Termin aktualisiert"})
         else:
-            return jsonify({"status": "not_found", "message": "Reservierungscode nicht gefunden"}), 404
+            return (
+                jsonify(
+                    {
+                        "status": "not_found",
+                        "message": "Reservierungscode nicht gefunden",
+                    }
+                ),
+                404,
+            )
     except Exception as e:
         print("❌ Fehler beim Aktualisieren:", e)
         return jsonify({"status": "error", "message": str(e)}), 500

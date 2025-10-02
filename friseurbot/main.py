@@ -1,10 +1,14 @@
+# Standard library
 import logging
 import os
 import traceback
 
-from flask import Flask, jsonify
+# Third-party (others)
+from flask import Flask
+from flask import jsonify
 from flask_cors import CORS
 
+# Friseurbot
 from friseurbot.api.appointments import appointments_api
 from friseurbot.api.auth import auth_api
 from friseurbot.api.blacklist import blacklist_api
@@ -12,6 +16,7 @@ from friseurbot.api.dashboard import stats_api
 from friseurbot.api.free_times import free_times_api
 from friseurbot.api.friseur import friseur_api
 from friseurbot.api.friseur_schedule import schedule_api
+from friseurbot.api.friseur_services import friseur_services_api
 from friseurbot.api.services import services_api
 from friseurbot.api.sessions import sessions_api
 from friseurbot.api.settings import settings_api
@@ -40,9 +45,9 @@ app.register_blueprint(stats_api)
 app.register_blueprint(settings_api)
 app.register_blueprint(friseur_api)
 app.register_blueprint(schedule_api)
+app.register_blueprint(friseur_services_api)
 
 
-# Ensure SQLAlchemy scoped_session is removed at the end of each app context.
 @app.teardown_appcontext
 def shutdown_session(exception=None):
     """
@@ -54,10 +59,9 @@ def shutdown_session(exception=None):
 
 @app.errorhandler(Exception)
 def handle_unexpected_error(e):
-    logging.exception("Unhandled exception: %s", e)  # traceback کامل در journal
+    logging.exception("Unhandled exception: %s", e)
     return jsonify({"status": "error", "message": str(e)}), 500
 
 
 if __name__ == "__main__":
-    # Development server. In production use gunicorn/uwsgi behind Nginx.
     app.run(host="127.0.0.1", port=8000, debug=os.getenv("FLASK_DEBUG") == "1")

@@ -9,13 +9,18 @@ Features:
 - Backward-compatible db_manager shim (get_session/close)
 """
 
+# Standard library
 import os
 from contextlib import contextmanager
 from typing import Iterator
 
+# Third-party (others)
 from dotenv import load_dotenv
+
+# SQLAlchemy
 from sqlalchemy import create_engine
-from sqlalchemy.orm import scoped_session, sessionmaker
+from sqlalchemy.orm import scoped_session
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
 # -----------------------------

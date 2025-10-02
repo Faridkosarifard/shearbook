@@ -1,6 +1,12 @@
-from flask import Blueprint, jsonify, request
+# Third-party (others)
+from flask import Blueprint
+from flask import jsonify
+from flask import request
+
+# SQLAlchemy
 from sqlalchemy.exc import IntegrityError
 
+# Friseurbot
 from friseurbot.entity import Blacklist
 from friseurbot.security import (
     require_admin,  # Only Admin UI can read full list or modify

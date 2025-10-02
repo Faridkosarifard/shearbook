@@ -12,11 +12,13 @@ Environment variables:
                      <repo_root>/friseurbot/credentials/token.json
 """
 
+# Standard library
 import os
 from logging import getLogger
 from pathlib import Path
 from typing import List
 
+# Third-party (others)
 from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -52,14 +54,18 @@ def _resolve_token_path() -> Path:
     env_token = os.getenv("GOOGLE_TOKEN_PATH")
     if env_token:
         p = Path(env_token)
-        logger.error(f"[auth_google] Using GOOGLE_TOKEN_PATH = {p}")  # surface prominently in logs
+        logger.error(
+            f"[auth_google] Using GOOGLE_TOKEN_PATH = {p}"
+        )  # surface prominently in logs
         return p
 
     # 2) Fallback to project-local default: /opt/friseurbot/friseurbot/credentials/token.json
     #    'parents[2]' climbs up to the repository root (two levels up from this file).
     root = Path(__file__).resolve().parents[2]  # important: 2, not 3
     p = root / "friseurbot" / "credentials" / "token.json"
-    logger.error(f"[auth_google] Using default token path = {p}")  # surface prominently in logs
+    logger.error(
+        f"[auth_google] Using default token path = {p}"
+    )  # surface prominently in logs
     return p
 
 

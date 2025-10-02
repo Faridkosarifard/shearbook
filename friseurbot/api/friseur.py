@@ -1,8 +1,15 @@
+# Standard library
 from logging import getLogger
 
-from flask import Blueprint, jsonify, request
+# Third-party (others)
+from flask import Blueprint
+from flask import jsonify
+from flask import request
+
+# SQLAlchemy
 from sqlalchemy.exc import SQLAlchemyError
 
+# Friseurbot
 from friseurbot.entity import Friseur
 from friseurbot.security import require_admin  # only Admin UI can write
 from friseurbot.security import require_bot_or_admin  # shared read for Bot & Admin UI

@@ -1,10 +1,14 @@
+# Standard library
 import os
 from pathlib import Path
 
+# Third-party (others)
 import typer
 from rich import print
 
-from friseurbot.cli.helpers import run_in_background, stop_process
+# Friseurbot
+from friseurbot.cli.helpers import run_in_background
+from friseurbot.cli.helpers import stop_process
 
 app = typer.Typer(help="Backend management")
 

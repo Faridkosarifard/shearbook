@@ -1,5 +1,12 @@
-from flask import Blueprint, jsonify, request
+# Third-party (others)
+from flask import Blueprint
+from flask import jsonify
+from flask import request
 
+# SQLAlchemy
+from sqlalchemy import select
+
+# Friseurbot
 from friseurbot.entity import Service
 from friseurbot.security import require_admin  # only Admin UI can write
 from friseurbot.security import require_bot_or_admin  # allow Bot & Admin UI to read
@@ -233,6 +240,74 @@ def reorder_service(service_id: int):
                     "id": target.id,
                     "new_position": target.position,
                 },
+            }
+        )
+    except Exception as e:
+        session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        db_manager.close()
+
+
+@services_api.route("/<int:service_id>/friseure", methods=["GET"])
+@require_bot_or_admin
+def get_friseure_for_service(service_id: int):
+    """
+    Return list of hairdressers (Friseur) who provide the given service.
+
+    Query params (optional):
+      - active=true|false  -> filter by Friseur.active
+
+    Response:
+      {
+        "status": "ok",
+        "service_id": 3,
+        "count": 2,
+        "friseure": [
+          {"id": 6, "name": "Anna", "active": true, "calendar_id": "..." },
+          ...
+        ]
+      }
+    """
+    active_q = request.args.get("active")
+    active_filter = None
+    if active_q is not None:
+        active_filter = active_q.lower() in ("1", "true", "yes")
+
+    session = db_manager.get_session()
+    try:
+        svc = session.get(Service, service_id)
+        if not svc:
+            return (
+                jsonify({"status": "not_found", "message": "Service not found."}),
+                404,
+            )
+
+        stmt = (
+            select(Friseur)
+            .join(friseur_service, Friseur.id == friseur_service.c.friseur_id)
+            .where(friseur_service.c.service_id == service_id)
+            .order_by(Friseur.name.asc())
+        )
+        if active_filter is not None:
+            stmt = stmt.where(Friseur.active == active_filter)
+
+        rows = session.scalars(stmt).all()
+        friseure = [
+            {
+                "id": fr.id,
+                "name": fr.name,
+                "active": bool(fr.active),
+                "calendar_id": fr.calendar_id,
+            }
+            for fr in rows
+        ]
+        return jsonify(
+            {
+                "status": "ok",
+                "service_id": service_id,
+                "count": len(friseure),
+                "friseure": friseure,
             }
         )
     except Exception as e:

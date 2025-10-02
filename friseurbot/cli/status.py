@@ -1,7 +1,9 @@
+# Standard library
 import time
 from collections import deque
 from pathlib import Path
 
+# Third-party (others)
 import psutil
 import typer
 from rich import print
@@ -12,6 +14,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+# Friseurbot
 from friseurbot.cli.helpers import check_service
 
 app = typer.Typer(help="Check status of Friseurbot services")

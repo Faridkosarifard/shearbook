@@ -1,9 +1,12 @@
 # friseurbot/utils/admin_tools.py
+# Standard library
 import re
 
+# Third-party (others)
 import bcrypt
 from rich import print
 
+# Friseurbot
 from friseurbot.entity import User
 from friseurbot.utils.db.manager import db_manager
 

@@ -1,6 +1,14 @@
+# Third-party (others)
 import typer
 
-from friseurbot.cli import admin, backend, bot, control, db, frontend, status
+# Friseurbot
+from friseurbot.cli import admin
+from friseurbot.cli import backend
+from friseurbot.cli import bot
+from friseurbot.cli import control
+from friseurbot.cli import db
+from friseurbot.cli import frontend
+from friseurbot.cli import status
 
 app = typer.Typer(help="Admin CLI for ShearBook")
 

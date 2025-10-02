@@ -1,7 +1,9 @@
+# Third-party (others)
 import typer
 from rich import print
 from rich.table import Table
 
+# Friseurbot
 from friseurbot.cli.backend import start as backend_start
 from friseurbot.cli.backend import stop as backend_stop
 from friseurbot.cli.bot import start as bot_start

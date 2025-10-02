@@ -1,16 +1,19 @@
 # friseurbot/api/auth.py
+# Third-party (others)
 import bcrypt
-from flask import Blueprint, jsonify, make_response, request
+from flask import Blueprint
+from flask import jsonify
+from flask import make_response
+from flask import request
 
+# Friseurbot
 from friseurbot.entity import User
+from friseurbot.security import clear_admin_cookie
+from friseurbot.security import issue_csrf
 from friseurbot.security import (
     require_admin,  # ensure /csrf is only reachable after login
 )
-from friseurbot.security import (
-    clear_admin_cookie,
-    issue_csrf,
-    set_admin_cookie,
-)
+from friseurbot.security import set_admin_cookie
 from friseurbot.utils.db.manager import db_manager
 
 auth_api = Blueprint("auth_api", __name__, url_prefix="/auth")

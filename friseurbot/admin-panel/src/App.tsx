@@ -11,6 +11,7 @@ import FriseurManagement from "./FriseurManagement";
 import BlacklistManagement from "./BlacklistManagement";
 import FriseurSchedulePage from "./FriseurSchedule";
 import WhatsAppAdminPage from "./WhatsAppAdmin";
+import FriseurServiceManager from "./FriseurServices";
 
 type PageId =
   | "dashboard"
@@ -18,6 +19,7 @@ type PageId =
   | "einstellungen"
   | "services"
   | "friseur"
+  | "friseurservices"
   | "blacklist"
   | "benutzer"
   | "arbeitszeiten"
@@ -79,6 +81,7 @@ function App() {
       {activePage === "einstellungen" && <SettingsPage />}
       {activePage === "services" && <ServiceManagement />}
       {activePage === "friseur" && <FriseurManagement />}
+      {activePage === "friseurservices" && <FriseurServiceManager/>}
       {activePage === "arbeitszeiten" && <FriseurSchedulePage />}
       {activePage === "blacklist" && <BlacklistManagement />}
       {activePage === "whatsapp" && <WhatsAppAdminPage />}

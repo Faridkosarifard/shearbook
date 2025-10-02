@@ -1,8 +1,14 @@
 # friseurbot/api/sessions.py
-from datetime import datetime, timedelta
+# Standard library
+from datetime import datetime
+from datetime import timedelta
 
-from flask import Blueprint, jsonify, request
+# Third-party (others)
+from flask import Blueprint
+from flask import jsonify
+from flask import request
 
+# Friseurbot
 from friseurbot.entity import Session
 from friseurbot.security import require_bot_token
 from friseurbot.utils.db.manager import db_manager

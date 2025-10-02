@@ -1,11 +1,13 @@
 # friseurbot/utils/reservation_code.py
 from __future__ import annotations
 
+# Standard library
 import datetime
 import re
 import secrets
 from typing import Optional
 
+# Friseurbot
 from friseurbot.entity import Appointment
 from friseurbot.utils.db.manager import db_manager
 

@@ -1,13 +1,17 @@
 # friseurbot/api/friseur_schedule.py
-from flask import Blueprint, jsonify, request
+# Third-party (others)
+from flask import Blueprint
+from flask import jsonify
+from flask import request
 
-from friseurbot.entity import (
-    ExceptionType,
-    Friseur,
-    FriseurException,
-    FriseurWeeklyHour,
-)
-from friseurbot.security import require_admin, require_bot_or_admin, require_csrf
+# Friseurbot
+from friseurbot.entity import ExceptionType
+from friseurbot.entity import Friseur
+from friseurbot.entity import FriseurException
+from friseurbot.entity import FriseurWeeklyHour
+from friseurbot.security import require_admin
+from friseurbot.security import require_bot_or_admin
+from friseurbot.security import require_csrf
 from friseurbot.utils.db.manager import db_manager
 
 schedule_api = Blueprint("schedule_api", __name__)

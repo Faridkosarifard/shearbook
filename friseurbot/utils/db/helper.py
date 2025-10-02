@@ -1,13 +1,23 @@
 # friseurbot/utils/db/helper.py
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from typing import List, Optional
+# Standard library
+from datetime import datetime
+from datetime import timedelta
+from typing import List
+from typing import Optional
 
+# Third-party (others)
 from googleapiclient.discovery import build
+
+# SQLAlchemy
 from sqlalchemy.exc import SQLAlchemyError
 
-from friseurbot.entity import Appointment, Customer, Service, Setting
+# Friseurbot
+from friseurbot.entity import Appointment
+from friseurbot.entity import Customer
+from friseurbot.entity import Service
+from friseurbot.entity import Setting
 from friseurbot.utils.auth_google import get_credentials
 from friseurbot.utils.db.manager import db_manager
 

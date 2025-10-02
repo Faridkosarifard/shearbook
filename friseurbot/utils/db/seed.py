@@ -4,10 +4,15 @@ Database seeding utilities for FriseurBot.
 Seeds default services and settings if they are missing.
 """
 
+# Third-party (others)
 from rich import print
+
+# SQLAlchemy
 from sqlalchemy.exc import SQLAlchemyError
 
-from friseurbot.entity import Service, Setting
+# Friseurbot
+from friseurbot.entity import Service
+from friseurbot.entity import Setting
 from friseurbot.utils.db.manager import session_scope
 
 

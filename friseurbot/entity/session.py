@@ -1,7 +1,14 @@
-from datetime import datetime, timedelta
+# Standard library
+from datetime import datetime
+from datetime import timedelta
 
-from sqlalchemy import JSON, Column, DateTime, String
+# SQLAlchemy
+from sqlalchemy import JSON
+from sqlalchemy import Column
+from sqlalchemy import DateTime
+from sqlalchemy import String
 
+# Friseurbot
 from friseurbot.entity.base import Base
 
 

@@ -1,6 +1,8 @@
+# Third-party (others)
 import typer
 from rich import print
 
+# Friseurbot
 from friseurbot.utils.db.admin_tools import create_admin
 
 app = typer.Typer(help="Admin management")

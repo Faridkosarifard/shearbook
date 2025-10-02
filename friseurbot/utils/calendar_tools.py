@@ -1,39 +1,60 @@
 # friseurbot/utils/calendar_tools.py
 from __future__ import annotations
 
+# Standard library
 from datetime import date as date_cls
-from datetime import datetime, time, timedelta
+from datetime import datetime
+from datetime import time
+from datetime import timedelta
 from functools import lru_cache
-from typing import List, Optional, Tuple
+from typing import List
+from typing import Optional
+from typing import Tuple
 
+# Third-party (others)
 import pytz
 from dateutil import parser
 
-from friseurbot.entity import Friseur, FriseurException, FriseurWeeklyHour
+# Friseurbot
+from friseurbot.entity import Friseur
+from friseurbot.entity import FriseurException
+from friseurbot.entity import FriseurWeeklyHour
 from friseurbot.utils.auth_google import get_calendar_service
 from friseurbot.utils.db.helper import get_setting
 from friseurbot.utils.db.manager import db_manager
 
 # ---- Constants / Defaults ----
 BERLIN_TZ = pytz.timezone("Europe/Berlin")
-DEFAULT_START = time(9, 0)   # 09:00
-DEFAULT_END = time(18, 0)    # 18:00
-SLOT_STEP_MIN = 30           # show candidate starts every 30 minutes
+DEFAULT_START = time(9, 0)  # 09:00
+DEFAULT_END = time(18, 0)  # 18:00
+SLOT_STEP_MIN = 30  # show candidate starts every 30 minutes
 
 # Human day names → weekday numbers (Mon=0..Sun=6)
 DAY_NAME_TO_NUM = {
-    "monday": 0, "mon": 0,
-    "tuesday": 1, "tue": 1, "tues": 1,
-    "wednesday": 2, "wed": 2,
-    "thursday": 3, "thu": 3, "thur": 3, "thurs": 3,
-    "friday": 4, "fri": 4,
-    "saturday": 5, "sat": 5,
-    "sunday": 6, "sun": 6,
+    "monday": 0,
+    "mon": 0,
+    "tuesday": 1,
+    "tue": 1,
+    "tues": 1,
+    "wednesday": 2,
+    "wed": 2,
+    "thursday": 3,
+    "thu": 3,
+    "thur": 3,
+    "thurs": 3,
+    "friday": 4,
+    "fri": 4,
+    "saturday": 5,
+    "sat": 5,
+    "sunday": 6,
+    "sun": 6,
 }
 
 # --- Public Holidays (DE-BW) ---
 try:
+    # Third-party (others)
     import holidays
+
     _HAS_HOLIDAYS = True
 except Exception:
     holidays = None  # type: ignore
@@ -41,6 +62,7 @@ except Exception:
 
 
 # ---------------- Helpers: settings / times ----------------
+
 
 def _parse_time_or_default(value: Optional[str], default: time) -> time:
     """Parse 'HH:MM' string, falling back to default on invalid/missing."""
@@ -113,6 +135,7 @@ def _is_public_holiday(d: date_cls) -> bool:
 
 
 # ---------------- Helpers: interval algebra ----------------
+
 
 def _merge_intervals(
     intervals: List[Tuple[datetime, datetime]],
@@ -246,16 +269,21 @@ def _gen_slots(
         if end <= start:
             continue
 
-        t = _ceil_to_step(start.replace(second=0, microsecond=0), int(step.total_seconds() // 60))
-        while t + dur <= end:                 # entire duration must fit in the SAME free interval
-            out.append(t.strftime("%H:%M"))   # result aligned to the half-hour grid
+        t = _ceil_to_step(
+            start.replace(second=0, microsecond=0), int(step.total_seconds() // 60)
+        )
+        while t + dur <= end:  # entire duration must fit in the SAME free interval
+            out.append(t.strftime("%H:%M"))  # result aligned to the half-hour grid
             t += step
     return out
 
 
 # ---------------- Helpers: personal schedule ----------------
 
-def _merge_windows(windows: List[Tuple[datetime, datetime]]) -> List[Tuple[datetime, datetime]]:
+
+def _merge_windows(
+    windows: List[Tuple[datetime, datetime]],
+) -> List[Tuple[datetime, datetime]]:
     """Merge overlapping windows; assumes all on the same day & tz-aware."""
     return _merge_intervals(windows)
 
@@ -321,7 +349,12 @@ def _get_personal_windows(
         for ex in ex_list:
             t = getattr(ex, "type", None)
             tval = t.value if hasattr(t, "value") else t
-            if tval == "CUSTOM" and ex.start_time and ex.end_time and ex.end_time > ex.start_time:
+            if (
+                tval == "CUSTOM"
+                and ex.start_time
+                and ex.end_time
+                and ex.end_time > ex.start_time
+            ):
                 custom_blocks.append(
                     (
                         BERLIN_TZ.localize(datetime.combine(d, ex.start_time)),
@@ -339,6 +372,7 @@ def _get_personal_windows(
 
 
 # ---------------- Helpers: events / intervals ----------------
+
 
 def _dt_from_google(v: dict) -> datetime:
     """
@@ -406,6 +440,7 @@ def _fetch_busy_intervals_freebusy(
 
 
 # ---------------- Main: free slots ----------------
+
 
 def get_free_slots(
     date_str: str,
@@ -507,6 +542,7 @@ def get_free_slots(
 
 # ---------------- Utility: create calendar ----------------
 
+
 def create_calendar_for_friseur(friseur_name: str) -> str:
     """Create a new dedicated Google Calendar for a stylist and return its calendarId."""
     service = get_calendar_service()
@@ -519,6 +555,7 @@ def create_calendar_for_friseur(friseur_name: str) -> str:
 
 
 # ---------------- Main: free slots (with meta reason) ----------------
+
 
 def get_free_slots_with_meta(
     date_str: str,

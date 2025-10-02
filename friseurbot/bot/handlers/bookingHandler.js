@@ -76,7 +76,7 @@ async function handleChooseService(client, chatId, message, servicesById) {
   logger.info(`Service selected by ${chatId}: ${session.service.name}`);
 
   try {
-    const res = await api.get("/friseure");
+    const res = await api.get(`/friseure_services/${session.service.id}/friseure`);
     const friseure = res.data || [];
 
     if (!friseure.length) {

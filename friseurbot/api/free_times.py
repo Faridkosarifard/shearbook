@@ -1,9 +1,14 @@
+# Standard library
 import traceback
 
-from flask import Blueprint, jsonify, request
+# Third-party (others)
+from flask import Blueprint
+from flask import jsonify
+from flask import request
 
+# Friseurbot
 from friseurbot.security import require_bot_or_admin  # Bot or Admin can call this
-from friseurbot.utils.calendar_tools import get_free_slots_with_meta  
+from friseurbot.utils.calendar_tools import get_free_slots_with_meta
 
 free_times_api = Blueprint("free_times", __name__)
 
@@ -51,7 +56,9 @@ def free_times():
         )
 
     try:
-        slots, reason = get_free_slots_with_meta(date.strip(), duration, calendar_id, friseur_id)
+        slots, reason = get_free_slots_with_meta(
+            date.strip(), duration, calendar_id, friseur_id
+        )
         return jsonify({"status": "ok", "slots": slots, "reason": reason})
     except Exception as e:
         # Keep traceback in logs for debugging; return clean error to client

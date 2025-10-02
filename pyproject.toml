@@ -88,6 +88,7 @@ exclude = '''
 [tool.isort]
 profile = "black"
 line_length = 88
+force_single_line = true
 known_first_party = ["api", "entity", "utils", "friseur_admin"]
 skip = [
     ".venv",
@@ -100,6 +101,17 @@ skip = [
     "admin-panel/dist",
     "alembic/versions"
 ]
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "SQLALCHEMY" ,"FRISEURBOT", "FIRSTPARTY"]
+
+known_sqlalchemy = ["sqlalchemy"]
+import_heading_sqlalchemy = "SQLAlchemy"
+
+known_friseurbot = ["friseurbot"]
+import_heading_friseurbot = "Friseurbot"
+
+import_heading_stdlib = "Standard library"
+import_heading_thirdparty = "Third-party (others)"
+import_heading_firstparty = "First-party"
 
 [build-system]
 requires = ["poetry-core"]

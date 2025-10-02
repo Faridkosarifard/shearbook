@@ -1,7 +1,9 @@
+# Standard library
 import subprocess
 import sys
 from pathlib import Path
 
+# Third-party (others)
 import psutil
 import typer
 from rich import print

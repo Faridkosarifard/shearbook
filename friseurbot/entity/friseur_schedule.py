@@ -1,18 +1,18 @@
 # friseurbot/entity/friseur_schedule.py
+# Standard library
 from enum import Enum as PyEnum
 
-from sqlalchemy import (
-    Column,
-    Date,
-    Enum,
-    ForeignKey,
-    Integer,
-    String,
-    Time,
-    UniqueConstraint,
-)
-from sqlalchemy.orm import relationship
+# SQLAlchemy
+from sqlalchemy import Column
+from sqlalchemy import Date
+from sqlalchemy import Enum
+from sqlalchemy import ForeignKey
+from sqlalchemy import Integer
+from sqlalchemy import String
+from sqlalchemy import Time
+from sqlalchemy import UniqueConstraint
 
+# Friseurbot
 from friseurbot.entity.base import Base
 
 
