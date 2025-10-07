@@ -5,6 +5,8 @@
 const dayjs = require("dayjs");
 const api = require("../utils/backend");
 const sessions = require("../sessions");
+require("dayjs/locale/de");
+dayjs.locale("de");
 
 /** Format a YYYY-MM-DD date into a user-friendly German string (e.g., "Mittwoch, 20.08.2025"). */
 function formatDateDE(iso) {
@@ -113,9 +115,10 @@ async function promptDatesOnly(client, chatId, session, stylistName, dateItems /
   session.suggested_dates = dateItems.map((d) => d.date);
   await sessions.set(chatId, session);
 
-  let msg =
-    `✅ Friseur *${stylistName}* wurde ausgewählt.\n\n` +
-    `Bitte wähle ein Datum \n${'🔴 *oder gib ein eigenes ein (YYYY-MM-DD)*🔴'}:\n`;
+  let msg = `🔴 *Bitte gib ein eigenes Datum ein (DD.MM.YYYY)* 🔴:
+oder wähle ein Datum: 
+
+✅ Friseur *${stylistName}* wurde ausgewählt.\n`;
 
   dateItems.forEach((d, i) => {
     msg += `${i + 1}. ${d.date}\n`;

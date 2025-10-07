@@ -17,6 +17,8 @@ const {
   promptDatesOnly,
   reasonText,
 } = require("./availabilityHandler");
+require("dayjs/locale/de");
+dayjs.locale("de")
 
 function getPhoneFromChatId(chatId) {
   return chatId.split("@")[0];
@@ -45,6 +47,10 @@ function normalizeDateInput(s = "") {
   return null;
 }
 
+/** Format a YYYY-MM-DD date into a user-friendly German string (e.g., "Mittwoch, 20.08.2025"). */
+function formatDateDE(iso) {
+  return dayjs(iso).format("DD.MM.YYYY");
+}
 /**
  * Step: user picks a service by sending its number.
  */
@@ -76,7 +82,10 @@ async function handleChooseService(client, chatId, message, servicesById) {
   logger.info(`Service selected by ${chatId}: ${session.service.name}`);
 
   try {
-    const res = await api.get(`/friseure_services/${session.service.id}/friseure`);
+    const res = await api.get(
+      `/friseure_services/${session.service.id}/friseure`,
+      { params: { active: true } }
+    );
     const friseure = res.data || [];
 
     if (!friseure.length) {
@@ -313,7 +322,7 @@ async function handleEnterName(client, chatId, message) {
 
     const antwort = bookingText
       .replace("{service}", session.service.name)
-      .replace("{date}", session.date)
+      .replace("{date}", formatDateDE(session.date))
       .replace("{time}", session.time)
       .replace("{name}", session.name)
       .replace("{code}", code || "—");

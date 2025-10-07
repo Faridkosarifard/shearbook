@@ -1,9 +1,7 @@
-# Standard Library
 # Standard library
 from contextlib import contextmanager
 
 # Third-party (others)
-# Third-party
 from flask import Blueprint
 from flask import jsonify
 from flask import request
@@ -18,7 +16,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 # Friseurbot
-# First-party (adjust imports to your project structure)
 from friseurbot.entity import Friseur
 from friseurbot.entity import Service
 from friseurbot.entity import friseur_service

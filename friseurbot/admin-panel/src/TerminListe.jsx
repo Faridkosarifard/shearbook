@@ -139,6 +139,7 @@ export default function TerminListe() {
         service: appt.service,
         name: appt.name,
         reservation_code: appt.reservation_code,
+        phone: appt.phone,
         duration: dur,
         friseur_id: appt.friseur_id ?? null,
         friseur_name: appt.friseur_name ?? "",
@@ -258,18 +259,18 @@ export default function TerminListe() {
     if (!selectedEvent) return;
     const code = selectedEvent.reservation_code;
     if (!code) {
-      alert("کد رزرو در این رویداد پیدا نشد.");
+      alert("Für diese Veranstaltung wurde kein Reservierungscode gefunden.");
       return;
     }
     const ok = window.confirm(
-      `نوبت ${selectedEvent.name} («${selectedEvent.service}») حذف شود؟`
+      `Sollte ${selectedEvent.name}'s Termin(«${selectedEvent.service}») abgesagt werden?`
     );
     if (!ok) return;
 
     try {
       setDeleting(true);
       const res = await api.delete(`/cancel-reservation/${code}`);
-      const msg = res?.data?.message || "انجام شد.";
+      const msg = res?.data?.message || "Erledigt.";
       alert(msg);
       setSelectedEvent(null);
       await loadAppointments(selectedFriseur);
@@ -278,8 +279,8 @@ export default function TerminListe() {
       const msg =
         data?.message ||
         (err?.response?.status === 404
-          ? "رزرو پیدا نشد (404)."
-          : "حذف انجام نشد.");
+          ? "Reservierung nicht gefunden (404)."
+          : "Das Löschen ist fehlgeschlagen.");
       alert(msg);
       console.error("Fehler beim Löschen:", err);
     } finally {
@@ -417,6 +418,7 @@ export default function TerminListe() {
             {!editMode ? (
               <>
                 <p className="mb-1"><span className="font-semibold">Name:</span> {selectedEvent.name}</p>
+                <p className="mb-1"><span className="font-semibold">mobile:</span> {selectedEvent.phone}</p>
                 <p className="mb-1"><span className="font-semibold">Service:</span> {selectedEvent.service}</p>
                 <p className="mb-1"><span className="font-semibold">Friseur:</span> {selectedEvent.friseur_name || selectedEvent.friseur_id}</p>
                 <p className="mb-2"><span className="font-semibold">Zeit:</span> {format(selectedEvent.start, "HH:mm")} – {format(selectedEvent.end, "HH:mm")}</p>
@@ -437,7 +439,7 @@ export default function TerminListe() {
                       deleting ? "bg-red-400 cursor-not-allowed" : "bg-red-600 hover:bg-red-700"
                     }`}
                   >
-                    {deleting ? "در حال حذف…" : "❌ Löschen"}
+                    {deleting ? "Löschen…" : "❌ Löschen"}
                   </button>
 
                   <button

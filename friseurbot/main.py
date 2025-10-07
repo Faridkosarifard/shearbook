@@ -24,6 +24,14 @@ from friseurbot.utils.db.manager import remove_session
 
 app = Flask(__name__)
 
+try:
+    gunicorn_logger = logging.getLogger("gunicorn.error")
+    if gunicorn_logger and gunicorn_logger.handlers:
+        app.logger.handlers = gunicorn_logger.handlers
+        app.logger.setLevel(gunicorn_logger.level)  # معمولاً INFO یا DEBUG
+        app.logger.propagate = False
+except Exception:
+    pass
 # CORS configuration:
 # - Admin UI runs locally (Vite/build) and needs credentials to send HttpOnly cookies.
 # - Bot does server-to-server calls and does NOT require CORS.

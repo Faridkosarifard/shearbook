@@ -1,16 +1,21 @@
 # Standard library
-import datetime
+from datetime import datetime
+from datetime import timedelta
 
 # Third-party (others)
 from flask import Blueprint
+from flask import current_app
 from flask import jsonify
 from flask import request
 from googleapiclient.discovery import build
 
 # SQLAlchemy
+from sqlalchemy import update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 
 # Friseurbot
+from friseurbot.entity import Friseur
 from friseurbot.entity.appointment import Appointment
 from friseurbot.entity.services import Service
 from friseurbot.security import has_valid_bot_token
@@ -19,6 +24,7 @@ from friseurbot.security import require_admin
 from friseurbot.security import require_bot_or_admin
 from friseurbot.security import require_csrf
 from friseurbot.utils.auth_google import get_credentials
+from friseurbot.utils.calendar_tools import reschedule_appointment_and_sync
 from friseurbot.utils.db.helper import delete_appointment_by_code
 from friseurbot.utils.db.helper import save_appointment
 from friseurbot.utils.db.helper import save_customer
@@ -91,7 +97,7 @@ def create_event():
 
         # Validate ISO datetime for 'start'
         try:
-            start = datetime.datetime.fromisoformat(start_str)
+            start = datetime.fromisoformat(start_str)
         except Exception:
             return (
                 jsonify({"status": "error", "message": "invalid start datetime"}),
@@ -99,7 +105,7 @@ def create_event():
             )
 
         duration = service.duration_min
-        end = start + datetime.timedelta(minutes=duration)
+        end = start + timedelta(minutes=duration)
 
         # Create Google Calendar event
         creds = get_credentials()
@@ -437,3 +443,138 @@ def get_verification(code):
         )
     finally:
         db_manager.close()
+
+
+@appointments_api.route(
+    "/appointments/<int:appointment_id>/reschedule", methods=["PATCH", "POST"]
+)
+@require_admin
+@require_csrf
+def reschedule_appointment(appointment_id: int):
+    """
+    Reschedule an appointment and sync Google Calendar.
+
+    Body:
+      { "date": "YYYY-MM-DD", "time": "HH:MM", "friseur_id": <int> }
+
+    - Validates the target slot with `get_free_slots_with_meta`.
+    - Patches or recreates the Google event as needed.
+    - Updates DB fields on success.
+    """
+    session = db_manager.get_session()
+    try:
+        data = request.get_json(silent=True) or {}
+
+        # ---- strict validation to avoid 500s ----
+        date_str = (data.get("date") or "").strip()
+        time_str = (data.get("time") or "").strip()
+        friseur_id_raw = data.get("friseur_id")
+
+        if not date_str or not time_str or friseur_id_raw is None:
+            return (
+                jsonify(
+                    {"status": "error", "message": "date, time, friseur_id required"}
+                ),
+                400,
+            )
+
+        try:
+            new_friseur_id = int(friseur_id_raw)
+        except (TypeError, ValueError):
+            return (
+                jsonify(
+                    {"status": "error", "message": "friseur_id must be an integer"}
+                ),
+                400,
+            )
+
+        # optional: normalize "9:00" -> "09:00"
+        try:
+            # First-party
+            from utils.timefmt import normalize_hhmm
+
+            time_str = normalize_hhmm(time_str)
+        except Exception:
+            pass
+
+        ok, msg, event_id, suggestions = reschedule_appointment_and_sync(
+            session=session,
+            appointment_id=int(appointment_id),
+            new_friseur_id=new_friseur_id,
+            date_str=date_str,
+            time_str=time_str,
+        )
+
+        current_app.logger.debug(msg)
+        if not ok:
+            conflict_reasons = {
+                "time_conflict",
+                "fully_booked",
+                "closed_weekly",
+                "stylist_off",
+                "global_day_off",
+                "public_holiday",
+                "no_windows",
+                "time_conflict_in_google_calendar",
+                "outside_personal_working_window",
+                "no_working_windows_that_day",
+            }
+            if msg in conflict_reasons:
+                return (
+                    jsonify(
+                        {
+                            "status": "conflict",
+                            "message": msg,
+                            "suggested_slots": suggestions,
+                        }
+                    ),
+                    409,
+                )
+            return jsonify({"status": "error", "message": msg}), 400
+
+        appt = session.get(Appointment, int(appointment_id))
+        payload = {
+            "id": appt.id,
+            "date": appt.date.isoformat(),
+            "time": appt.time.strftime("%H:%M"),
+            "friseur_id": appt.friseur_id,
+            "event_id": event_id,
+        }
+        resp = jsonify({"status": "ok", "appointment": payload})
+
+        resp.headers["Cache-Control"] = "no-store"
+        session.commit()
+        current_app.logger.debug(
+            "RESCHEDULE OK: appt=%s friseur_id=%s date=%s time=%s event_id=%s",
+            appt.id,
+            appt.friseur_id,
+            appt.date,
+            appt.time,
+            event_id,
+        )
+        session.close()
+        return resp
+    except Exception as e:
+        current_app.logger.exception("RESCHEDULE failed id=%s", appointment_id)
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        db_manager.close()
+
+
+@appointments_api.route(
+    "/appointment/<int:appointment_id>/reschedule", methods=["PATCH", "POST"]
+)
+@require_admin
+@require_csrf
+def reschedule_appointment_alias(appointment_id: int):
+    resp = reschedule_appointment(appointment_id)
+    try:
+        # اگر resp یک Flask Response است
+        resp.headers["Deprecation"] = "true"
+        resp.headers["Link"] = (
+            '</appointments/{id}/reschedule>; rel="successor-version"'
+        )
+        resp.headers["Warning"] = '299 - "Use /appointments/<id>/reschedule"'
+    except Exception:
+        pass
+    return resp

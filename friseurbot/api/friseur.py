@@ -1,22 +1,33 @@
 # Standard library
+from datetime import datetime
+from datetime import timedelta
 from logging import getLogger
 
 # Third-party (others)
 from flask import Blueprint
+from flask import current_app
 from flask import jsonify
 from flask import request
 
 # SQLAlchemy
+from sqlalchemy import and_
+from sqlalchemy import or_
+from sqlalchemy import select
+from sqlalchemy import update
 from sqlalchemy.exc import SQLAlchemyError
 
 # Friseurbot
+from friseurbot.entity import Appointment
 from friseurbot.entity import Friseur
-from friseurbot.security import require_admin  # only Admin UI can write
-from friseurbot.security import require_bot_or_admin  # shared read for Bot & Admin UI
-from friseurbot.security import (
-    require_csrf,  # CSRF for UI write ops (Bot exempt inside decorator)
-)
+from friseurbot.entity import Service
+from friseurbot.security import require_admin
+from friseurbot.security import require_bot_or_admin
+from friseurbot.security import require_csrf
+from friseurbot.utils.calendar_tools import BERLIN_TZ
 from friseurbot.utils.calendar_tools import create_calendar_for_friseur
+from friseurbot.utils.calendar_tools import move_or_insert_event_for_appointment
+from friseurbot.utils.calendar_tools import suggest_free_slots_for_appointment
+from friseurbot.utils.db.helper import get_upcoming_appointments
 from friseurbot.utils.db.manager import db_manager
 
 logger = getLogger(__name__)
@@ -35,7 +46,9 @@ def get_friseure():
     """
     session = db_manager.get_session()
     try:
-        friseure = session.query(Friseur).order_by(Friseur.id).all()
+        friseure = session.scalars(
+            select(Friseur).where(Friseur.active == True).order_by(Friseur.name)
+        ).all()
         return jsonify(
             [
                 {
@@ -168,7 +181,8 @@ def update_friseur(friseur_id: int):
 @require_csrf
 def delete_friseur(friseur_id: int):
     """
-    Delete a hairdresser by ID.
+    Soft-Delete a hairdresser by ID.
+
     Access:
         - Admin UI only (write)
     """
@@ -178,9 +192,35 @@ def delete_friseur(friseur_id: int):
         if not f:
             return jsonify({"status": "error", "message": "Not found"}), 404
 
-        session.delete(f)
+        upcoming = get_upcoming_appointments(session, friseur_id)
+        if upcoming:
+            payload = [
+                {
+                    "appointment_id": ap.id,
+                    "date": ap.date.isoformat(),
+                    "time": ap.time.strftime("%H:%M"),
+                    "customer_name": ap.name,
+                    "phone": ap.phone,
+                    "service_id": ap.service_id,
+                    "service_name": getattr(ap.service, "name", None),
+                }
+                for ap in upcoming
+            ]
+
+            return (
+                jsonify(
+                    {
+                        "status": "conflict",
+                        "message": "Dieser Friseur hat noch zukünftige Termine. Bitte zuerst umbuchen.",
+                        "upcoming_appointments": payload,
+                    }
+                ),
+                409,
+            )
+
+        f.active = False
         session.commit()
-        return jsonify({"status": "ok"})
+        return jsonify({"status": "ok", "message": "Friseur deactivated"})
     except SQLAlchemyError as e:
         session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -205,6 +245,131 @@ def get_calendar_id(friseur_id: int):
             return jsonify({"status": "error", "message": "Not found"}), 404
         return jsonify({"calendar_id": f.calendar_id})
     except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        db_manager.close()
+
+
+@friseur_api.route("/friseure/<int:friseur_id>/reassign", methods=["POST"])
+@require_admin
+@require_csrf
+def reassign_future_appointments(friseur_id: int):
+    """
+    Reassign future appointments from `friseur_id` to `new_friseur_id`.
+    Body:
+      {
+        "new_friseur_id": 12,
+        "appointment_ids": [1,2,3]   # optional; if omitted, reassign all future appointments
+      }
+    Response:
+      {
+        "status": "ok",
+        "reassigned": <int>,
+        "moved":  [{ "appointment_id": 1, "action": "moved|ok|already_on_target_calendar", "event_id": "..." }],
+        "failed": [{ "appointment_id": 3, "reason": "time_conflict|...", "suggested_slots": ["09:00","09:30"] }]
+      }
+    """
+    session = db_manager.get_session()
+    try:
+        data = request.get_json(silent=True) or {}
+        new_friseur_id = data.get("new_friseur_id")
+        appointment_ids = data.get("appointment_ids")
+
+        if not new_friseur_id:
+            return (
+                jsonify({"status": "error", "message": "new_friseur_id is required"}),
+                400,
+            )
+
+        old_f = session.get(Friseur, friseur_id)
+        new_f = session.get(Friseur, new_friseur_id)
+        if not old_f:
+            return jsonify({"status": "error", "message": "Old Friseur not found"}), 404
+        if not new_f or new_f.active is False or not new_f.calendar_id:
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "New Friseur not found/inactive/no calendar",
+                    }
+                ),
+                400,
+            )
+
+        # Collect future appointments: today (time >= now) and later dates.
+        now = datetime.now(BERLIN_TZ)
+        today, now_t = now.date(), now.time()
+
+        ids = session.scalars(
+            select(Appointment.id)
+            .where(Appointment.friseur_id == friseur_id)
+            .where(
+                or_(
+                    Appointment.date > today,
+                    and_(Appointment.date == today, Appointment.time >= now_t),
+                )
+            )
+        )
+        upcoming_ids = set(ids)
+        target_ids = (
+            list(upcoming_ids & set(appointment_ids))
+            if appointment_ids
+            else list(upcoming_ids)
+        )
+        if not target_ids:
+            return jsonify(
+                {
+                    "status": "ok",
+                    "message": "No future appointments to reassign",
+                    "reassigned": 0,
+                    "moved": [],
+                    "failed": [],
+                }
+            )
+
+        moved, failed = [], []
+        for appt_id in target_ids:
+            ok, msg, event_id = move_or_insert_event_for_appointment(
+                session, appt_id, int(new_friseur_id)
+            )
+            if ok:
+                # Ensure ownership is updated (event is already moved/created by the helper).
+                session.execute(
+                    update(Appointment)
+                    .where(Appointment.id == appt_id)
+                    .values(friseur_id=int(new_friseur_id))
+                )
+                moved.append(
+                    {"appointment_id": appt_id, "action": msg, "event_id": event_id}
+                )
+            else:
+                # Provide same-day suggestions using your existing helper.
+                suggest = suggest_free_slots_for_appointment(
+                    session, appt_id, int(new_friseur_id)
+                )
+                failed.append(
+                    {
+                        "appointment_id": appt_id,
+                        "reason": msg,
+                        "suggested_slots": suggest,
+                    }
+                )
+
+        session.commit()
+        current_app.logger.debug(
+            "REASSIGN result: moved=%d failed=%d", len(moved), len(failed)
+        )
+        return jsonify(
+            {
+                "status": "ok",
+                "message": "Reassign attempted",
+                "reassigned": len(moved),
+                "moved": moved,
+                "failed": failed,
+            }
+        )
+    except SQLAlchemyError as e:
+        session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         db_manager.close()

@@ -7,6 +7,7 @@ from datetime import datetime
 from datetime import time
 from datetime import timedelta
 from functools import lru_cache
+from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Tuple
@@ -14,11 +15,18 @@ from typing import Tuple
 # Third-party (others)
 import pytz
 from dateutil import parser
+from flask import current_app
+
+# SQLAlchemy
+from sqlalchemy import select
+from sqlalchemy import update
 
 # Friseurbot
+from friseurbot.entity import Appointment
 from friseurbot.entity import Friseur
 from friseurbot.entity import FriseurException
 from friseurbot.entity import FriseurWeeklyHour
+from friseurbot.entity import Service
 from friseurbot.utils.auth_google import get_calendar_service
 from friseurbot.utils.db.helper import get_setting
 from friseurbot.utils.db.manager import db_manager
@@ -708,3 +716,357 @@ def get_free_slots_with_meta(
     # Unique + sorted
     slots = sorted(list(dict.fromkeys(slots)))
     return (slots, "ok" if slots else "fully_booked")
+
+
+def _is_interval_free_in_calendar(
+    calendar_id: str, start_dt: datetime, end_dt: datetime
+) -> bool:
+    """
+    Checks with the FreeBusy API whether the interval [start_dt, end_dt) in the calendar is free or not.
+    Output: True if free.
+    """
+    service = get_calendar_service()
+    body = {
+        "timeMin": start_dt.isoformat(),
+        "timeMax": end_dt.isoformat(),
+        "timeZone": "Europe/Berlin",
+        "items": [{"id": calendar_id}],
+    }
+    resp = service.freebusy().query(body=body).execute()
+    busy = resp.get("calendars", {}).get(calendar_id, {}).get("busy", [])
+    return len(busy) == 0
+
+
+def _compose_event_payload(
+    appt: "Appointment",
+    friseur: "Friseur",
+    service_name: Optional[str],
+    duration_min: int,
+) -> Dict:
+    """
+    Builds the Google event body from Appointment.
+    Assumption: appt.date (Date), appt.time (Time) are in Europe/Berlin.
+    """
+    start_local = BERLIN_TZ.localize(datetime.combine(appt.date, appt.time))
+    end_local = start_local + timedelta(minutes=int(duration_min))
+
+    summary = f"{service_name or 'Service'} – {appt.name}"
+    description = (
+        f"Reservation: {appt.reservation_code}\n"
+        f"Phone: {appt.phone}\n"
+        f"Friseur: {friseur.name}\n"
+    )
+
+    return {
+        "summary": summary,
+        "description": description,
+        "start": {"dateTime": start_local.isoformat(), "timeZone": "Europe/Berlin"},
+        "end": {"dateTime": end_local.isoformat(), "timeZone": "Europe/Berlin"},
+    }
+
+
+def create_event_for_appointment(
+    session, appt_id: int, target_friseur_id: int
+) -> Tuple[bool, Optional[str], Optional[str]]:
+    """
+    Creates an event in the destination hairdresser's calendar for an existing Appointment,
+    provided that the time slot does not conflict with calendar events and that day/time slot is within the hairdresser's working hours.
+
+    Output: (ok, message, new_event_id)
+    """
+    # resolve objects
+    appt = session.get(Appointment, appt_id)
+    new_fr = session.get(Friseur, target_friseur_id)
+    if not appt or not new_fr or not new_fr.calendar_id:
+        return False, "appointment_or_friseur_missing_or_no_calendar", None
+
+    windows = _get_personal_windows(appt.date, int(target_friseur_id))
+    if not windows:
+        return False, "no_working_windows_that_day", None
+
+    svc = session.get(Service, appt.service_id)
+    duration_min = getattr(svc, "duration_min", None) or getattr(svc, "duration", None)
+    if not duration_min:
+        return False, "service_duration_missing", None
+
+    start_local = BERLIN_TZ.localize(datetime.combine(appt.date, appt.time))
+    end_local = start_local + timedelta(minutes=int(duration_min))
+    fits_in_window = any(start_local >= w0 and end_local <= w1 for (w0, w1) in windows)
+    if not fits_in_window:
+        return False, "outside_personal_working_window", None
+
+    if not _is_interval_free_in_calendar(new_fr.calendar_id, start_local, end_local):
+        return False, "time_conflict_in_google_calendar", None
+
+    body = _compose_event_payload(
+        appt, new_fr, getattr(svc, "name", None), int(duration_min)
+    )
+    service = get_calendar_service()
+    created = (
+        service.events().insert(calendarId=new_fr.calendar_id, body=body).execute()
+    )
+    event_id = created.get("id")
+
+    appt.google_event_id = event_id
+    return True, "ok", event_id
+
+
+def suggest_free_slots_for_appointment(
+    session, appt_id: int, target_friseur_id: int
+) -> List[str]:
+    """
+    Suggest free time for appointment.
+
+    If the current interval overlaps, for the same date and same duration service,
+    it returns the suggested free slots.
+    """
+    appt = session.get(Appointment, appt_id)
+    new_fr = session.get(Friseur, target_friseur_id)
+    if not appt or not new_fr or not new_fr.calendar_id:
+        return []
+
+    svc = session.get(Service, appt.service_id)
+    duration_min = getattr(svc, "duration_min", None) or getattr(svc, "duration", None)
+    if not duration_min:
+        return []
+
+    slots = get_free_slots(
+        date_str=appt.date.isoformat(),
+        duration_min=int(duration_min),
+        calendar_id=new_fr.calendar_id,
+        friseur_id=int(target_friseur_id),
+    )
+    return slots
+
+
+def delete_calendar_for_friseur(friseur_id: int) -> Tuple[bool, str]:
+    """
+    Completely deletes the hairdresser's personal calendar (irreversible).
+
+    Warning: All events in that calendar will be deleted.
+    """
+    session = db_manager.get_session()
+    try:
+        fr = session.get(Friseur, int(friseur_id))
+        if not fr or not fr.calendar_id:
+            return False, "friseur_or_calendar_missing"
+
+        service = get_calendar_service()
+        service.calendars().delete(calendarId=fr.calendar_id).execute()
+
+        fr.calendar_id = None
+        session.commit()
+        return True, "ok"
+    except Exception as e:
+        session.rollback()
+        return False, f"error:{e}"
+    finally:
+        db_manager.close()
+
+
+def move_or_insert_event_for_appointment(
+    session, appt_id: int, target_friseur_id: int
+) -> Tuple[bool, str, Optional[str]]:
+    """
+    Move an appointment's existing Google event to the target hairdresser's calendar,
+    or create a new event if moving is not possible.
+
+    IMPORTANT:
+    - Pre-validate the *exact* interval (start -> start+duration) against the target
+      hairdresser's personal working windows and Google FreeBusy. Do NOT rely on
+      grid-based slot lists here, because appointments may start off-grid (e.g., 09:15).
+
+    Returns:
+        (ok, message, new_event_id)
+        - ok=True only if the event ends up in the target calendar at a valid slot.
+        - message: 'moved', 'already_on_target_calendar', 'ok' on success,
+                   or one of {'appointment_or_friseur_missing_or_no_calendar',
+                               'service_duration_missing',
+                               'no_working_windows_that_day',
+                               'outside_personal_working_window',
+                               'time_conflict_in_google_calendar'} on failure.
+        - new_event_id: event id in the target calendar when ok=True.
+    """
+    appt = session.get(Appointment, appt_id)
+    new_fr = session.get(Friseur, target_friseur_id)
+    if not appt or not new_fr or not new_fr.calendar_id:
+        return False, "appointment_or_friseur_missing_or_no_calendar", None
+
+    svc = session.get(Service, appt.service_id)
+    duration_min = getattr(svc, "duration_min", None) or getattr(svc, "duration", None)
+    try:
+        duration_min = int(duration_min) if duration_min is not None else None
+    except Exception:
+        duration_min = None
+    if not duration_min or duration_min <= 0:
+        return False, "service_duration_missing", None
+
+    start_local = BERLIN_TZ.localize(datetime.combine(appt.date, appt.time))
+    end_local = start_local + timedelta(minutes=int(duration_min))
+
+    old_fr = session.get(Friseur, appt.friseur_id) if appt.friseur_id else None
+    old_cal = getattr(old_fr, "calendar_id", None) if old_fr else None
+    new_cal = new_fr.calendar_id
+
+    if appt.google_event_id and old_cal == new_cal:
+        return True, "already_on_target_calendar", appt.google_event_id
+
+    windows = _get_personal_windows(appt.date, int(target_friseur_id))
+    if not windows:
+        return False, "no_working_windows_that_day", None
+    fits_in_window = any(start_local >= w0 and end_local <= w1 for (w0, w1) in windows)
+    if not fits_in_window:
+        return False, "outside_personal_working_window", None
+
+    if not _is_interval_free_in_calendar(new_cal, start_local, end_local):
+        return False, "time_conflict_in_google_calendar", None
+
+    service = get_calendar_service()
+
+    if appt.google_event_id and old_cal and old_cal != new_cal:
+        try:
+            moved_event = (
+                service.events()
+                .move(
+                    calendarId=old_cal,
+                    eventId=appt.google_event_id,
+                    destination=new_cal,
+                )
+                .execute()
+            )
+            new_event_id = moved_event.get("id")
+            appt.google_event_id = new_event_id
+            return True, "moved", new_event_id
+        except Exception:
+            pass
+
+    ok, msg, eid = create_event_for_appointment(session, appt_id, target_friseur_id)
+    return ok, msg, eid
+
+
+def reschedule_appointment_and_sync(
+    session, appointment_id: int, new_friseur_id: int, date_str: str, time_str: str
+) -> Tuple[bool, str, Optional[str], List[str]]:
+    """
+    Reschedule an appointment to a new date/time (and possibly a new hairdresser) and sync Google Calendar.
+
+    Steps:
+      1) Validate the target slot using `get_free_slots_with_meta` (weekly template, exceptions, public holidays, FreeBusy).
+      2) If the event remains in the same calendar, PATCH its start/end.
+      3) If the calendar changes, insert a new event (and optionally delete the old one).
+      4) Update the DB fields (friseur_id, date, time, google_event_id).
+
+    Returns:
+        (ok, message, event_id, suggested_slots_if_conflict)
+        - ok: True when successfully rescheduled.
+        - message: 'ok' or a reason key ('time_conflict', 'fully_booked', 'closed_weekly', ...).
+        - event_id: Google event id when ok=True.
+        - suggested_slots_if_conflict: slots list for the same date if ok=False due to conflict.
+    """
+    appt = session.execute(
+        select(Appointment).where(Appointment.id == appointment_id).with_for_update()
+    ).scalar_one_or_none()
+    if not appt:
+        return False, "appointment_not_found", None, []
+
+    new_fr = session.get(Friseur, int(new_friseur_id))
+    if not new_fr or not new_fr.calendar_id or new_fr.active is False:
+        return False, "friseur_invalid_or_no_calendar", None, []
+
+    svc = session.get(Service, appt.service_id)
+    duration_min = getattr(svc, "duration_min", None) or getattr(svc, "duration", None)
+    try:
+        duration_min = int(duration_min) if duration_min is not None else None
+    except Exception:
+        duration_min = None
+    if not duration_min or duration_min <= 0:
+        return False, "service_duration_missing", None, []
+
+    slots, reason = get_free_slots_with_meta(
+        date_str=date_str,
+        duration_min=duration_min,
+        calendar_id=new_fr.calendar_id,
+        friseur_id=int(new_friseur_id),
+    )
+    if time_str not in set(slots or []):
+        return False, (reason or "time_conflict"), None, (slots or [])
+
+    # Third-party (others)
+    from dateutil import parser as _p
+
+    new_date = _p.parse(date_str).date()
+    new_time = datetime.strptime(time_str, "%H:%M").time()
+    start_local = BERLIN_TZ.localize(datetime.combine(new_date, new_time))
+    end_local = start_local + timedelta(minutes=int(duration_min))
+
+    service = get_calendar_service()
+    old_fr = session.get(Friseur, appt.friseur_id) if appt.friseur_id else None
+    old_cal = getattr(old_fr, "calendar_id", None) if old_fr else None
+    new_cal = new_fr.calendar_id
+
+    new_event_id = None
+    try:
+        if appt.google_event_id and old_cal and old_cal == new_cal:
+            service.events().patch(
+                calendarId=new_cal,
+                eventId=appt.google_event_id,
+                body={
+                    "start": {
+                        "dateTime": start_local.isoformat(),
+                        "timeZone": "Europe/Berlin",
+                    },
+                    "end": {
+                        "dateTime": end_local.isoformat(),
+                        "timeZone": "Europe/Berlin",
+                    },
+                    "description": f"Reservation: {appt.reservation_code}\nPhone: {appt.phone}\nFriseur: {new_fr.name}\n",
+                },
+            ).execute()
+            new_event_id = appt.google_event_id
+        else:
+            _old_date, _old_time = appt.date, appt.time
+            appt.date, appt.time = new_date, new_time
+            body = _compose_event_payload(
+                appt, new_fr, getattr(svc, "name", None), int(duration_min)
+            )
+            created = service.events().insert(calendarId=new_cal, body=body).execute()
+            new_event_id = created.get("id")
+
+            try:
+                if appt.google_event_id and old_cal and old_cal != new_cal:
+                    service.events().delete(
+                        calendarId=old_cal, eventId=appt.google_event_id
+                    ).execute()
+            except Exception:
+                pass
+
+        stmt = (
+            update(Appointment)
+            .where(Appointment.id == int(appointment_id))
+            .values(
+                friseur_id=int(new_friseur_id),
+                date=new_date,
+                time=new_time,
+                google_event_id=new_event_id,
+            )
+        )
+        result = session.execute(stmt)
+        session.flush()
+        # Verify fresh state
+        fresh = session.get(Appointment, int(appointment_id))
+        try:
+            current_app.logger.debug(
+                "RESCHEDULE DB UPDATE rows=%s → fresh: id=%s friseur_id=%s date=%s time=%s",
+                getattr(result, "rowcount", "n/a"),
+                fresh.id,
+                fresh.friseur_id,
+                fresh.date,
+                fresh.time,
+            )
+        except Exception:
+            pass
+
+        return True, "ok", new_event_id, []
+    except Exception as ge:
+        session.rollback()
+        return False, f"google_api_error:{ge}", None, []

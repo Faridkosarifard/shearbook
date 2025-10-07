@@ -4,6 +4,7 @@ from __future__ import annotations
 # Standard library
 from datetime import datetime
 from datetime import timedelta
+from datetime import timezone
 from typing import List
 from typing import Optional
 
@@ -11,6 +12,7 @@ from typing import Optional
 from googleapiclient.discovery import build
 
 # SQLAlchemy
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 # Friseurbot
@@ -247,3 +249,17 @@ def get_setting(key: str) -> Optional[str]:
         return setting.value if setting else None
     finally:
         db_manager.close()
+
+
+def get_upcoming_appointments(session, friseur_id: int):
+    """
+    Returns A list of upcoming appointments for a hairdresser.
+    """
+    now_utc = datetime.now(timezone.utc)
+    stmt = (
+        select(Appointment)
+        .where(Appointment.friseur_id == friseur_id)
+        .where(Appointment.date >= now_utc)
+        .order_by(Appointment.date.asc())
+    )
+    return list(session.scalars(stmt))
