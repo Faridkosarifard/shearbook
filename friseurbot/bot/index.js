@@ -18,6 +18,7 @@ const friseurHandler = require("./handlers/friseurHandler");
 const logger = require("./utils/logger");
 const sessions = require("./sessions");
 const { startAdminServer } = require("./adminServer");
+const { shouldHandleMessage } = require("./guard");
 
 // ---- WhatsApp Client init (same as before; only 2 stable options added) ----
 const client = new Client({
@@ -97,6 +98,12 @@ client.on("ready", async () => {
 });
 
 client.on("message", async (msg) => {
+  const ok = await shouldHandleMessage(msg, client);
+  if (!ok) {
+    logger.debug(`Dropped message: type=${msg.type} from=${msg.from} isNew=${msg._data?.isNewMsg} ts=${msg.timestamp}`);
+    return;
+  }
+
   const chatId = msg.from;
   const phone = chatId.split("@")[0];
 
