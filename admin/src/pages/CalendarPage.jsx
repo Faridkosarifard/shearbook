@@ -4,6 +4,8 @@ import { format, parse, startOfWeek, getDay, startOfDay, endOfDay } from "date-f
 import { enUS } from "date-fns/locale";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import api from "../api";
+import AppointmentEvent from "../components/AppointmentEvent";
+import { appointmentTooltip, scrollToDate } from "../calendarHours";
 
 const localizer = dateFnsLocalizer({
   format,
@@ -21,17 +23,26 @@ export default function CalendarPage() {
   const [form, setForm] = useState(null);
   const [services, setServices] = useState([]);
   const [error, setError] = useState("");
+  const [scrollTo, setScrollTo] = useState(() => scrollToDate({}, []));
 
   async function load(start, end) {
     const from = format(start, "yyyy-MM-dd");
     const to = format(end, "yyyy-MM-dd");
-    const [appts, st, sv] = await Promise.all([
+    const [appts, st, sv, settingsRes] = await Promise.all([
       api.get("/appointments", { params: { from, to } }),
       api.get("/stylists"),
       api.get("/services"),
+      api.get("/settings"),
     ]);
     setStylists(st.data);
     setServices(sv.data);
+    const schedules = await Promise.all(
+      (st.data || []).map((row) =>
+        api.get(`/stylists/${row.id}/schedule`).then((res) => res.data).catch(() => ({ weekly: [] })),
+      ),
+    );
+    const weeklyStarts = schedules.flatMap((item) => (item.weekly || []).map((window) => window.start));
+    setScrollTo(scrollToDate(settingsRes.data || {}, weeklyStarts));
     setEvents(
       appts.data.map((row) => {
         const startAt = new Date(`${row.date}T${row.time}`);
@@ -68,9 +79,11 @@ export default function CalendarPage() {
     }
   }
 
+  const scrollKey = `${scrollTo.getHours()}:${String(scrollTo.getMinutes()).padStart(2, "0")}`;
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-end justify-between gap-4">
+    <div className="flex flex-col gap-4 flex-1 min-h-0">
+      <div className="flex items-end justify-between gap-4 shrink-0">
         <div>
           <h1 className="text-3xl font-semibold">Calendar</h1>
           <p className="text-ink/60 mt-1">Week, day and month views of the book.</p>
@@ -87,15 +100,21 @@ export default function CalendarPage() {
           </button>
         </div>
       </div>
-      {error ? <p className="text-red-700 text-sm">{error}</p> : null}
-      <div className="bg-white rounded-2xl p-4 shadow-sm" style={{ height: 720 }}>
+      {error ? <p className="text-red-700 text-sm shrink-0">{error}</p> : null}
+      <div className="bg-white rounded-2xl p-4 shadow-sm flex-1 min-h-[32rem] flex flex-col">
         <Calendar
+          key={scrollKey}
+          style={{ height: "100%" }}
           localizer={localizer}
           events={visible}
           startAccessor="start"
           endAccessor="end"
           views={[Views.MONTH, Views.WEEK, Views.DAY]}
           defaultView={Views.WEEK}
+          scrollToTime={scrollTo}
+          enableAutoScroll
+          tooltipAccessor={appointmentTooltip}
+          components={{ event: AppointmentEvent }}
           onRangeChange={(value) => {
             if (Array.isArray(value)) {
               setRange({ start: startOfDay(value[0]), end: endOfDay(value[value.length - 1]) });
@@ -106,7 +125,7 @@ export default function CalendarPage() {
         />
       </div>
       {form ? (
-        <form onSubmit={create} className="bg-white rounded-2xl p-6 shadow-sm grid grid-cols-2 gap-4">
+        <form onSubmit={create} className="bg-white rounded-2xl p-6 shadow-sm grid grid-cols-2 gap-4 shrink-0">
           <h2 className="col-span-2 font-medium">New appointment</h2>
           <input required placeholder="Customer name" className="border border-mist rounded-lg px-3 py-2" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <input required placeholder="Phone" className="border border-mist rounded-lg px-3 py-2" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />

@@ -8,6 +8,7 @@
 }
 
 html, body, #root {
+  height: 100%;
   min-height: 100%;
 }
 
@@ -15,6 +16,8 @@ html, body, #root {
   font-family: inherit;
   background: white;
   border-radius: 1rem;
+  height: 100%;
+  min-height: 0;
 }
 .rbc-toolbar button {
   border-color: var(--color-mist) !important;
@@ -30,4 +33,31 @@ html, body, #root {
 .rbc-event {
   background: var(--color-copper) !important;
   border: none !important;
+  padding: 2px 5px !important;
+  font-size: 12px;
+  line-height: 1.2;
+}
+.rbc-event-label {
+  font-size: 10px;
+  opacity: 0.9;
+}
+.rbc-event-content {
+  white-space: normal !important;
+}
+.shearbook-event {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.shearbook-event-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.shearbook-event-service {
+  font-size: 10px;
+  opacity: 0.92;
+  overflow-wrap: anywhere;
 }

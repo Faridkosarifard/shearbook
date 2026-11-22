@@ -25,7 +25,7 @@ const NAV = [
 
 export default function Layout({ username, active, onNavigate, onLogout, children }) {
   return (
-    <div className="min-h-screen flex bg-cream">
+    <div className="h-screen flex bg-cream overflow-hidden">
       <aside className="w-64 shrink-0 bg-ink text-cream flex flex-col">
         <div className="flex items-center gap-3 px-5 py-6 border-b border-white/10">
           <img src="/logo.svg" alt="" className="h-10 w-10 rounded-xl bg-white/5" />
@@ -60,7 +60,7 @@ export default function Layout({ username, active, onNavigate, onLogout, childre
           Sign out
         </button>
       </aside>
-      <main className="flex-1 p-8 overflow-auto">{children}</main>
+      <main className="flex-1 min-h-0 p-8 overflow-auto flex flex-col">{children}</main>
     </div>
   );
 }
