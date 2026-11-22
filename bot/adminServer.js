@@ -50,7 +50,7 @@ function startAdminServer(client, logger = console, opts = {}) {
     broadcast({ type: "disconnected", reason });
   });
 
-  app.get("/wa/status", auth, (_req, res) => res.json({ status, me }));
+  app.get("/wa/status", auth, (_req, res) => res.json({ status, me, qr: Boolean(lastQrPng) }));
   app.get("/wa/qr.png", auth, (_req, res) => {
     if (!lastQrPng) return res.status(404).json({ error: "no_qr" });
     res.type("png").send(lastQrPng);

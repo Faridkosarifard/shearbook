@@ -75,3 +75,18 @@ def test_list_sessions_admin(client, auth_client, bot_headers):
 def test_whatsapp_proxy_requires_admin(client):
     response = client.get("/wa/status")
     assert response.status_code == 401
+
+
+def test_whatsapp_status_is_offline_when_bridge_is_down(auth_client, app):
+    app.config["WHATSAPP_ADMIN_URL"] = ""
+    response = auth_client.get("/wa/status")
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "offline", "me": None, "qr": False}
+
+
+def test_whatsapp_status_is_offline_when_bridge_is_unreachable(auth_client, app):
+    app.config["WHATSAPP_ADMIN_URL"] = "http://127.0.0.1:1"
+    response = auth_client.get("/wa/status")
+    assert response.status_code == 200
+    assert response.get_json()["status"] == "offline"
+    assert response.get_json()["qr"] is False

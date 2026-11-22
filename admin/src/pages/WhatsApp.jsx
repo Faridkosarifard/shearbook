@@ -1,35 +1,52 @@
 import { useEffect, useState } from "react";
 import api from "../api";
 
+function parseStatus(payload) {
+  if (!payload || typeof payload !== "object") {
+    return { status: "offline", me: null, qr: false };
+  }
+  return {
+    status: payload.status || "offline",
+    me: payload.me || null,
+    qr: Boolean(payload.qr) || payload.status === "qr",
+  };
+}
+
 export default function WhatsApp() {
   const [status, setStatus] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [stamp, setStamp] = useState(Date.now());
-  const [hasQr, setHasQr] = useState(true);
+  const [hasQr, setHasQr] = useState(false);
   const [error, setError] = useState("");
 
   async function refresh() {
     try {
-      const st = await fetch("/wa/status", { credentials: "include" }).then((r) => (r.ok ? r.json() : { status: "offline" }));
+      const stRes = await fetch("/wa/status", { credentials: "include" });
+      const st = parseStatus(stRes.ok ? await stRes.json() : null);
       setStatus(st);
+      if (st.qr) {
+        setHasQr(true);
+        setStamp(Date.now());
+      } else {
+        setHasQr(false);
+      }
       try {
         const se = await api.get("/sessions");
         setSessions(se.data);
       } catch {
         setSessions([]);
       }
+      setError("");
     } catch {
+      setStatus({ status: "offline", me: null, qr: false });
+      setHasQr(false);
       setError("Could not reach the WhatsApp bridge or the API.");
     }
   }
 
   useEffect(() => {
     refresh();
-    const timer = setInterval(() => {
-      setStamp(Date.now());
-      setHasQr(true);
-      refresh();
-    }, 5000);
+    const timer = setInterval(refresh, 5000);
     return () => clearInterval(timer);
   }, []);
 
@@ -87,3 +104,5 @@ export default function WhatsApp() {
     </div>
   );
 }
+
+export { parseStatus };

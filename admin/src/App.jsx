@@ -32,9 +32,9 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get("/auth/csrf");
-        if (res.data?.status === "ok") {
-          setUsername(localStorage.getItem("shearbook.user") || "admin");
+        const res = await api.get("/auth/session");
+        if (res.data?.authenticated) {
+          setUsername(res.data.username || localStorage.getItem("shearbook.user") || "admin");
           setReady("in");
           return;
         }

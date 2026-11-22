@@ -2,7 +2,14 @@ from flask import Blueprint, jsonify, make_response, request
 
 from shearbook.db.session import get_session
 from shearbook.models import User
-from shearbook.security import clear_admin_cookie, issue_csrf, require_admin, set_admin_cookie
+from shearbook.security import (
+    admin_username,
+    clear_admin_cookie,
+    is_admin_cookie_valid,
+    issue_csrf,
+    require_admin,
+    set_admin_cookie,
+)
 
 auth_api = Blueprint("auth", __name__)
 
@@ -31,6 +38,23 @@ def login():
 def logout():
     resp = make_response(jsonify({"status": "ok"}))
     return clear_admin_cookie(resp)
+
+
+@auth_api.get("/auth/session")
+def session_status():
+    """Return the current admin session without a 401 when signed out.
+
+    The admin UI uses this on first load so a signed-out visit does not
+    appear as a failed request in the browser console.
+    """
+    if not is_admin_cookie_valid():
+        return jsonify({"status": "ok", "authenticated": False})
+    username = admin_username()
+    if not username:
+        return jsonify({"status": "ok", "authenticated": False})
+    resp = make_response(jsonify({"status": "ok", "authenticated": True, "username": username}))
+    resp, _ = issue_csrf(resp)
+    return resp
 
 
 @auth_api.get("/auth/csrf")

@@ -112,7 +112,15 @@ def _register_whatsapp_proxy(app: Flask) -> None:
         if not is_admin_cookie_valid():
             return jsonify({"status": "error", "message": "unauthorized"}), 401
         base = app.config.get("WHATSAPP_ADMIN_URL") or ""
+        status_poll = request.method == "GET" and path.strip("/") == "status"
+
+        def offline_status():
+            # 200 keeps the admin console clean while the client is down.
+            return jsonify({"status": "offline", "me": None, "qr": False})
+
         if not base:
+            if status_poll:
+                return offline_status()
             return jsonify({"status": "error", "message": "whatsapp_admin_unconfigured"}), 503
         url = f"{base}/wa/{path}"
         headers = {k: v for k, v in request.headers if k.lower() not in {"host", "content-length"}}
@@ -130,6 +138,8 @@ def _register_whatsapp_proxy(app: Flask) -> None:
                 timeout=30,
             )
         except requests.RequestException:
+            if status_poll:
+                return offline_status()
             return jsonify({"status": "error", "message": "whatsapp_bridge_unreachable"}), 503
         excluded = {"content-encoding", "content-length", "transfer-encoding", "connection"}
         response_headers = [
