@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -27,11 +27,13 @@ class LocalCalendar:
             self.session.delete(row)
 
     def list_busy(self, calendar_id: str, start: datetime, end: datetime) -> list[BusyInterval]:
+        start_utc = start.astimezone(UTC) if start.tzinfo else start.replace(tzinfo=UTC)
+        end_utc = end.astimezone(UTC) if end.tzinfo else end.replace(tzinfo=UTC)
         rows = self.session.scalars(
             select(CalendarEvent).where(
                 CalendarEvent.calendar_id == calendar_id,
-                CalendarEvent.start < end,
-                CalendarEvent.end > start,
+                CalendarEvent.start < end_utc,
+                CalendarEvent.end > start_utc,
             )
         ).all()
         return [BusyInterval(start=row.start, end=row.end) for row in rows if row.end > row.start]

@@ -1,8 +1,9 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from shearbook.db.types import UtcDateTime
 from shearbook.models.base import Base
 
 
@@ -16,5 +17,5 @@ class CalendarEvent(Base):
     event_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     summary: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    start: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
+    end: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
