@@ -1,14 +1,27 @@
-.PHONY: format lint
+.PHONY: install dev lint test bot-install admin-install admin-build
 
-format:
-	poetry run black .
-	poetry run isort .
+install:
+	python -m pip install -e ".[dev]"
 
 lint:
-	poetry run black --check .
-	poetry run isort --check-only .
+	ruff check src tests
+	ruff format --check src tests
+	mypy
 
+test:
+	pytest --cov --cov-report=term-missing
 
-init:
-	poetry run alembic upgrade head
-	poetry run python seed.py
+bot-install:
+	cd bot && npm install
+
+admin-install:
+	cd admin && npm install
+
+admin-build:
+	cd admin && npm run build
+
+admin-test:
+	cd admin && npm test
+
+bot-test:
+	cd bot && npm test
