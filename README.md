@@ -57,10 +57,24 @@ Requirements: Python 3.11+, Node.js 18+ (22 recommended).
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env
-# Replace every change-me secret with a long random string, for example:
-#   python -c "import secrets; print(secrets.token_urlsafe(48))"
+shearbook init-env
 
+shearbook init-db
+shearbook seed
+shearbook create-admin --username admin
+shearbook serve
+```
+
+`shearbook init-env` copies `.env.example` to `.env` and replaces every
+`change-me` secret with a random value. It will not overwrite secrets that
+are already set unless you pass `--force`.
+
+To use PostgreSQL instead of the default SQLite database, create the database
+first, then:
+
+```bash
+pip install -e ".[dev,postgres]"
+shearbook init-env --database-url "postgresql+psycopg://USER:PASSWORD@localhost:5432/shearbook"
 shearbook init-db
 shearbook seed
 shearbook create-admin --username admin

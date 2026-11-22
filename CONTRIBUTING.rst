@@ -11,7 +11,7 @@ Development setup
     python3 -m venv .venv
     source .venv/bin/activate
     pip install -e ".[dev]"
-    cp .env.example .env   # then put real secrets in .env
+    shearbook init-env
     shearbook init-db
     shearbook seed
     shearbook create-admin -u admin -p 'choose-a-password'

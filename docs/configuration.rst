@@ -2,8 +2,11 @@ Configuration
 =============
 
 ShearBook reads settings from the process environment and, if present, a
-``.env`` file in the project root. Copy ``.env.example`` to ``.env`` and fill
-it in. Never commit ``.env`` or anything under ``credentials/``.
+``.env`` file in the current directory or the project root. Run
+``shearbook init-env`` to create one from ``.env.example`` and fill in
+random secrets. Use ``--database-url`` to set a PostgreSQL URL, and
+``--force`` to rotate secrets that are already set. Never commit ``.env``
+or anything under ``credentials/``.
 
 Secrets
 -------
