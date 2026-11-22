@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #1b2a4a;
+  --color-copper: #c46b3a;
+  --color-cream: #f6f1e8;
+  --color-mist: #e8e2d6;
+}
+
+html, body, #root {
+  min-height: 100%;
+}
+
+.rbc-calendar {
+  font-family: inherit;
+  background: white;
+  border-radius: 1rem;
+}
+.rbc-toolbar button {
+  border-color: var(--color-mist) !important;
+  color: var(--color-ink) !important;
+}
+.rbc-toolbar button.rbc-active {
+  background: var(--color-ink) !important;
+  color: white !important;
+}
+.rbc-today {
+  background: #fbf6ee !important;
+}
+.rbc-event {
+  background: var(--color-copper) !important;
+  border: none !important;
+}

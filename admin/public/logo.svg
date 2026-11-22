@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ShearBook logo">
+  <rect width="512" height="512" rx="112" fill="#1B2A4A"/>
+  <rect x="148" y="96" width="216" height="232" rx="28" fill="#F6F1E8"/>
+  <circle cx="196" cy="96" r="16" fill="#1B2A4A"/>
+  <circle cx="316" cy="96" r="16" fill="#1B2A4A"/>
+  <circle cx="196" cy="96" r="8" fill="#C46B3A"/>
+  <circle cx="316" cy="96" r="8" fill="#C46B3A"/>
+  <rect x="178" y="156" width="156" height="10" rx="5" fill="#D5D0C8"/>
+  <rect x="178" y="184" width="156" height="10" rx="5" fill="#D5D0C8"/>
+  <rect x="178" y="212" width="112" height="10" rx="5" fill="#D5D0C8"/>
+  <g fill="none" stroke="#C46B3A" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="210" y1="210" x2="296.5" y2="382.6"/>
+    <line x1="302" y1="210" x2="215.5" y2="382.6"/>
+    <circle cx="194" cy="410" r="36"/>
+    <circle cx="318" cy="410" r="36"/>
+  </g>
+  <circle cx="256" cy="308" r="14" fill="#C46B3A"/>
+  <circle cx="256" cy="308" r="5" fill="#1B2A4A"/>
+</svg>
