@@ -6,9 +6,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-load_dotenv()
+from shearbook.envutil import load_env_files, missing_secret_message
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SQLITE = f"sqlite:///{(REPO_ROOT / 'data' / 'shearbook.db').as_posix()}"
@@ -69,6 +67,7 @@ class Settings:
 
 def load_settings(*, testing: bool = False) -> Settings:
     testing = testing or _bool("SHEARBOOK_TESTING")
+    looked = load_env_files(REPO_ROOT)
     secret_key = os.getenv("SECRET_KEY", "")
     jwt_secret = os.getenv("JWT_SECRET", "")
     bot_token = os.getenv("BOT_TOKEN", "")
@@ -83,11 +82,7 @@ def load_settings(*, testing: bool = False) -> Settings:
             if not value or value.startswith("change-me")
         ]
         if missing:
-            raise RuntimeError(
-                "Missing or placeholder secrets: "
-                + ", ".join(missing)
-                + ". Copy .env.example to .env and generate random values."
-            )
+            raise RuntimeError(missing_secret_message(missing, looked))
     else:
         secret_key = secret_key or "test-secret"
         jwt_secret = jwt_secret or "test-jwt"

@@ -12,6 +12,19 @@ from sqlalchemy.pool import StaticPool
 
 from shearbook.models import Base
 
+
+def _require_postgres_driver(url: str) -> None:
+    if not url.startswith("postgresql"):
+        return
+    try:
+        import psycopg  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            "PostgreSQL is configured (DATABASE_URL) but the psycopg driver is not installed. "
+            'Install it with: pip install -e ".[postgres]"'
+        ) from exc
+
+
 _engine: Engine | None = None
 _SessionLocal: scoped_session | None = None
 
@@ -34,6 +47,7 @@ def configure_engine(url: str, *, echo: bool = False) -> Engine:
         def _sqlite_fk(dbapi_conn, _rec):  # pragma: no cover - hook
             dbapi_conn.execute("PRAGMA foreign_keys=ON")
     else:
+        _require_postgres_driver(url)
         kwargs.update(
             pool_pre_ping=True,
             pool_size=10,
